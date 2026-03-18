@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 import uuid
 from collections import deque
 from datetime import datetime
@@ -51,11 +51,51 @@ else:
 LOG_DIR = os.path.join(ROOT_DIR, "logs")
 MEMORY_DIR = os.path.join(ROOT_DIR, "ai_memory")
 MODEL_PATH = os.path.join(MEMORY_DIR, "robot_brain.json")
+PROFILE_PATH = os.path.join(MEMORY_DIR, "player_profile.json")
 
 
 def ensure_dirs():
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(MEMORY_DIR, exist_ok=True)
+
+
+def default_profile():
+    return {
+        "player_name": "Oyuncu",
+        "total_matches": 0,
+        "player_wins": 0,
+        "player_losses": 0,
+        "robot_wins": 0,
+        "robot_losses": 0,
+        "draws": 0,
+        "best_player_score": 0,
+        "best_robot_score": 0,
+        "best_level": 1,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+def load_profile():
+    if not os.path.exists(PROFILE_PATH):
+        return default_profile()
+    try:
+        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        base = default_profile()
+        if isinstance(data, dict):
+            base.update(data)
+        return base
+    except Exception:
+        return default_profile()
+
+
+def save_profile(profile):
+    payload = dict(default_profile())
+    if isinstance(profile, dict):
+        payload.update(profile)
+    payload["updated_at"] = datetime.utcnow().isoformat()
+    with open(PROFILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 def clone_board(board):
@@ -784,6 +824,34 @@ class RobotLearner:
         self.strategy_engine.update_after_move(strategy_name, reward)
         self.epsilon = max(0.02, self.epsilon * 0.999)
 
+    def _features_from_log_item(self, item):
+        board = item.get("board")
+        move = item.get("move_decision") or {}
+        col = move.get("col")
+
+        if not isinstance(board, list) or len(board) != ROWS:
+            return None
+        if not isinstance(col, int) or not (0 <= col < COLS):
+            return None
+
+        normalized_board = []
+        for row in board:
+            if not isinstance(row, list) or len(row) != COLS:
+                return None
+            normalized_row = []
+            for cell in row:
+                if cell is None or is_number(cell) or cell in ("J", "B", "L"):
+                    normalized_row.append(cell)
+                else:
+                    normalized_row.append(EMPTY)
+            normalized_board.append(normalized_row)
+
+        current_num = item.get("num", 0)
+        next_num = item.get("next_num", 0)
+        turn = item.get("turn", 1)
+        level_guess = max(1, int(turn) // 12 + 1) if isinstance(turn, int) else 1
+        return self._features_for_col(normalized_board, current_num, next_num, level_guess, col)
+
     def analyze_previous_logs(self, max_files=6, max_lines=350):
         files = sorted(
             [os.path.join(LOG_DIR, f) for f in os.listdir(LOG_DIR) if f.lower().endswith(".jsonl")],
@@ -794,6 +862,8 @@ class RobotLearner:
 
         trained = 0
         total_reward = 0.0
+        robot_replays = 0
+        human_replays = 0
 
         for fp in files:
             try:
@@ -801,13 +871,26 @@ class RobotLearner:
                     lines = f.readlines()
                 for line in lines[-max_lines:]:
                     item = json.loads(line)
-                    if item.get("player") != "Robot":
-                        continue
-                    x = item.get("robot_features")
+                    player = item.get("player")
                     reward = float(item.get("points", 0))
-                    strat = item.get("selected_strategy", "balance")
-                    if not isinstance(x, list) or len(x) != 12:
+
+                    if player == "Robot":
+                        x = item.get("robot_features")
+                        strat = item.get("selected_strategy", "balance")
+                        if not isinstance(x, list) or len(x) != 12:
+                            continue
+                        robot_replays += 1
+                    elif player == "Human":
+                        # Bekleme modunda rakibin kazandiran hamleleri de ogrenilir.
+                        x = self._features_from_log_item(item)
+                        if not isinstance(x, list) or len(x) != 12:
+                            continue
+                        strat = "human_replay"
+                        reward = max(0.0, reward) * 0.85
+                        human_replays += 1
+                    else:
                         continue
+
                     self.learn_from_move(x, reward, strat)
                     trained += 1
                     total_reward += reward
@@ -815,7 +898,7 @@ class RobotLearner:
                 continue
 
         self.save_memory()
-        return trained, total_reward
+        return trained, total_reward, robot_replays, human_replays
 
 
 class GameLogger:
@@ -833,8 +916,13 @@ class VersusGame:
     def __init__(self, root):
         ensure_dirs()
 
+        self.profile = load_profile()
+        self._ensure_player_name()
+        self.player_name = str(self.profile.get("player_name", "Oyuncu"))
+        self.match_recorded = False
+
         self.root = root
-        self.root.title("Sayisal Tetris V3 - Human vs Robot AI")
+        self.root.title(f"Sayisal Tetris V3 - {self.player_name} vs Robot AI")
         self.root.geometry(f"{WIN_W}x{WIN_H}")
         self.root.resizable(True, True)
         self.root.minsize(WIN_W, WIN_H)
@@ -991,12 +1079,81 @@ class VersusGame:
         self.toggle_wait_mode()
 
     def manual_idle_analysis(self):
-        trained, reward = self.robot_ai.analyze_previous_logs()
-        self.status = f"Manuel analiz: {trained} hamle tekrarlandi, toplam odul {int(reward)}"
+        trained, reward, robot_replays, human_replays = self.robot_ai.analyze_previous_logs()
+        self.status = (
+            f"Manuel analiz: {trained} replay (Robot {robot_replays}, Insan {human_replays}), "
+            f"toplam odul {int(reward)}"
+        )
         self.push_reason(self.status, "analysis")
+
+    def _ensure_player_name(self):
+        current_name = str(self.profile.get("player_name", "")).strip()
+        if current_name and current_name != "Oyuncu":
+            return
+
+        asked = simpledialog.askstring("Oyuncu", "Oyuncu adini giriniz:", parent=self.root)
+        asked = (asked or "").strip()
+        self.profile["player_name"] = asked if asked else "Oyuncu"
+        save_profile(self.profile)
+
+    def _record_match_result(self):
+        if self.match_recorded:
+            return
+
+        status = self.status.lower()
+        player_win = False
+        robot_win = False
+        is_draw = "berabere" in status
+
+        if not is_draw:
+            if "insan" in status and "kaybetti" in status:
+                robot_win = True
+            elif "robot" in status and "kaybetti" in status:
+                player_win = True
+            elif "insan" in status and "kazandi" in status:
+                player_win = True
+            elif "robot" in status and "kazandi" in status:
+                robot_win = True
+            elif "insan icin giris kolonu dolu" in status:
+                robot_win = True
+            elif "robot icin giris kolonu dolu" in status:
+                player_win = True
+            else:
+                if self.player_score > self.robot_score:
+                    player_win = True
+                elif self.robot_score > self.player_score:
+                    robot_win = True
+                else:
+                    is_draw = True
+
+        self.profile["total_matches"] = int(self.profile.get("total_matches", 0)) + 1
+        if player_win:
+            self.profile["player_wins"] = int(self.profile.get("player_wins", 0)) + 1
+            self.profile["robot_losses"] = int(self.profile.get("robot_losses", 0)) + 1
+        elif robot_win:
+            self.profile["robot_wins"] = int(self.profile.get("robot_wins", 0)) + 1
+            self.profile["player_losses"] = int(self.profile.get("player_losses", 0)) + 1
+        else:
+            self.profile["draws"] = int(self.profile.get("draws", 0)) + 1
+
+        self.profile["best_player_score"] = max(int(self.profile.get("best_player_score", 0)), int(self.player_score))
+        self.profile["best_robot_score"] = max(int(self.profile.get("best_robot_score", 0)), int(self.robot_score))
+        self.profile["best_level"] = max(int(self.profile.get("best_level", 1)), int(self.level))
+
+        save_profile(self.profile)
+        self.match_recorded = True
+
+        if player_win:
+            result_text = f"Mac sonucu kaydedildi: {self.player_name} kazandi"
+        elif robot_win:
+            result_text = "Mac sonucu kaydedildi: Robot kazandi"
+        else:
+            result_text = "Mac sonucu kaydedildi: Berabere"
+        self.push_reason(result_text, "system")
 
     def on_quit(self, _event=None):
         self.robot_ai.save_memory()
+        save_profile(self.profile)
         self.root.destroy()
 
     def restart_match(self, _event=None):
@@ -1030,6 +1187,7 @@ class VersusGame:
 
         self.phase = "player_input"
         self.game_over = False
+        self.match_recorded = False
         self.last_input_time = time.time()
         self.last_idle_analysis = 0.0
         self.status = "Yeni mac basladi: insan hamlesini bekliyor"
@@ -1435,7 +1593,7 @@ class VersusGame:
             self.player_board,
             LEFT_X,
             TOP_Y,
-            "Insan",
+            self.player_name,
             active_col=self.player_col if self.phase == "player_input" and not self.game_over else None,
             active_num=self.current_num,
             flash_cells=self.flash_player,
@@ -1457,7 +1615,7 @@ class VersusGame:
         self.canvas.create_text(nx, ny, anchor="nw", text=f"Tur: {self.turn}", fill="#cbd5e1", font=("Segoe UI", 13, "bold"))
         self.canvas.create_text(nx, ny + 28, anchor="nw", text=f"Seviye: {self.level}", fill="#cbd5e1", font=("Segoe UI", 12))
 
-        self.canvas.create_text(nx, ny + 58, anchor="nw", text=f"Insan Skor: {self.player_score}", fill="#86efac", font=("Segoe UI", 12, "bold"))
+        self.canvas.create_text(nx, ny + 58, anchor="nw", text=f"{self.player_name} Skor: {self.player_score}", fill="#86efac", font=("Segoe UI", 12, "bold"))
         self.canvas.create_text(nx, ny + 84, anchor="nw", text=f"Robot Skor: {self.robot_score}", fill="#fca5a5", font=("Segoe UI", 12, "bold"))
 
         self.canvas.create_text(nx, ny + 125, anchor="nw", text="Gelen Sayi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
@@ -1481,6 +1639,15 @@ class VersusGame:
             "B            : Bekleme modu ac/kapat",
             "R            : Yeni mac baslat",
             "Q / Esc      : Cikis",
+            "",
+            f"Oyuncu: {self.player_name}",
+            f"Toplam mac: {int(self.profile.get('total_matches', 0))}",
+            f"{self.player_name} W/L: {int(self.profile.get('player_wins', 0))}/{int(self.profile.get('player_losses', 0))}",
+            f"Robot W/L: {int(self.profile.get('robot_wins', 0))}/{int(self.profile.get('robot_losses', 0))}",
+            f"Berabere: {int(self.profile.get('draws', 0))}",
+            f"En yuksek skor ({self.player_name}): {int(self.profile.get('best_player_score', 0))}",
+            f"En yuksek skor (Robot): {int(self.profile.get('best_robot_score', 0))}",
+            f"En yuksek seviye: {int(self.profile.get('best_level', 1))}",
             "",
             f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
             f"Oneri motoru sayisi: {self.robot_ai.strategy_engine.proposal_engine_count()}",
@@ -1515,7 +1682,7 @@ class VersusGame:
             self.canvas.create_text(
                 (bx1 + bx2) // 2,
                 by1 + 80,
-                text=f"Insan {self.player_score}  |  Robot {self.robot_score}",
+                text=f"{self.player_name} {self.player_score}  |  Robot {self.robot_score}",
                 fill="#e5e7eb",
                 font=("Segoe UI", 13, "bold"),
             )
@@ -1593,9 +1760,12 @@ class VersusGame:
         if now - self.last_idle_analysis < IDLE_ANALYZE_SECONDS:
             return
 
-        trained, reward = self.robot_ai.analyze_previous_logs()
+        trained, reward, robot_replays, human_replays = self.robot_ai.analyze_previous_logs()
         self.last_idle_analysis = now
-        self.status = f"Boslukta analiz: {trained} hamle tekrarlandi, toplam odul {int(reward)}"
+        self.status = (
+            f"Boslukta analiz: {trained} replay (Robot {robot_replays}, Insan {human_replays}), "
+            f"toplam odul {int(reward)}"
+        )
         self.push_reason(self.status, "analysis")
 
         if not self.wait_mode_var.get():
@@ -1635,6 +1805,8 @@ class VersusGame:
 
     def tick(self):
         self._idle_analyze_if_needed()
+        if self.game_over and not self.match_recorded:
+            self._record_match_result()
         self.draw()
         self.root.after(33, self.tick)
 
