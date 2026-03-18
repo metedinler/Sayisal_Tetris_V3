@@ -89,6 +89,24 @@ SOUND_MODE_LABELS = {
     SOUND_MODE_FULL: "Tam Ses",
 }
 
+GAME_MODE_EASY = "easy"
+GAME_MODE_NORMAL = "normal"
+GAME_MODE_HARD = "hard"
+GAME_MODE_LABELS = {
+    GAME_MODE_EASY: "Kolay Mod",
+    GAME_MODE_NORMAL: "Normal Mod",
+    GAME_MODE_HARD: "Zor Mod",
+}
+
+ROBOT_PROFILE_BALANCED = "balanced"
+ROBOT_PROFILE_AGGRESSIVE = "aggressive"
+ROBOT_PROFILE_DEFENSIVE = "defensive"
+ROBOT_PROFILE_LABELS = {
+    ROBOT_PROFILE_BALANCED: "Dengeli",
+    ROBOT_PROFILE_AGGRESSIVE: "Agresif",
+    ROBOT_PROFILE_DEFENSIVE: "Savunmaci",
+}
+
 
 def ensure_dirs():
     os.makedirs(LOG_DIR, exist_ok=True)
@@ -392,19 +410,20 @@ def apply_up_push_if_needed(board, level, visual_events):
     if level < 13:
         return 0, 0, 0, False
 
-    occupied = [(r, c) for r in range(1, ROWS) for c in range(COLS) if board[r][c] is not EMPTY]
-    if not occupied:
+    occupied_cols = [c for c in range(COLS) if any(board[r][c] is not EMPTY for r in range(ROWS))]
+    if not occupied_cols:
         return 0, 0, 0, False
 
-    r, c = random.choice(occupied)
-    upper = (r - 1, c)
+    c = random.choice(occupied_cols)
 
-    if board[upper[0]][upper[1]] is EMPTY:
-        board[upper[0]][upper[1]] = board[r][c]
-        board[r][c] = EMPTY
+    # Tum sutunu bir satir yukari it: fiziksel davranis daha tutarlidir.
+    if board[0][c] is EMPTY:
+        for r in range(0, ROWS - 1):
+            board[r][c] = board[r + 1][c]
+        board[ROWS - 1][c] = EMPTY
         return 0, 0, 0, False
 
-    collided_cells = {(r, c), upper}
+    collided_cells = {(0, c), (1, c)} if ROWS > 1 else {(0, c)}
     clear_extra = random_surrounding_clear(board, collided_cells, limit=3)
     collided_cells |= clear_extra
 
@@ -765,7 +784,7 @@ class RobotLearner:
         ]
         return x
 
-    def choose_action(self, board, current_num, next_num, level):
+    def choose_action(self, board, current_num, next_num, level, game_mode=GAME_MODE_NORMAL, robot_profile=ROBOT_PROFILE_BALANCED):
         self.decision_count += 1
         candidates = []
         for col in range(COLS):
@@ -792,7 +811,15 @@ class RobotLearner:
                 + sw[4] * heuristics[4]
                 + sw[5] * heuristics[5]
             )
-            final = nn_score * 0.65 + strat_score * 0.35
+            nn_weight = 0.65
+            strat_weight = 0.35
+            if robot_profile == ROBOT_PROFILE_AGGRESSIVE:
+                nn_weight = 0.55
+                strat_weight = 0.45
+            elif robot_profile == ROBOT_PROFILE_DEFENSIVE:
+                nn_weight = 0.72
+                strat_weight = 0.28
+            final = nn_score * nn_weight + strat_score * strat_weight
             candidates.append((col, x, nn_score, strat_score, final, best_str["name"]))
 
         if not candidates:
@@ -808,6 +835,10 @@ class RobotLearner:
             }
 
         effective_epsilon = self.epsilon
+        if game_mode == GAME_MODE_EASY:
+            effective_epsilon = max(effective_epsilon, 0.14)
+        elif game_mode == GAME_MODE_HARD:
+            effective_epsilon = min(effective_epsilon, 0.06)
         if self.decision_count <= EARLY_LEARNING_TURNS:
             effective_epsilon = max(self.epsilon, EARLY_EPSILON)
 
@@ -837,7 +868,17 @@ class RobotLearner:
                 proposal_score = p_nn * 0.60 + p_str * 0.40
 
                 r = risk_score(board, chosen_col)
-                if self.strategy_engine.decide_apply(proposal, final_score, proposal_score, r):
+                if game_mode == GAME_MODE_HARD:
+                    rule_boost = (potential_sum9_count(board, current_num, pcol) + potential_lock_count(board, current_num, pcol)) * 0.08
+                    proposal_score += rule_boost
+                elif game_mode == GAME_MODE_EASY:
+                    proposal_score -= 0.04
+
+                gate_pass = self.strategy_engine.decide_apply(proposal, final_score, proposal_score, r)
+                if game_mode == GAME_MODE_HARD and proposal_score > final_score + 0.02:
+                    gate_pass = True
+
+                if gate_pass:
                     used_proposal = True
                     chosen_col = pcol
                     x = px
@@ -998,6 +1039,8 @@ class VersusGame:
         if mode not in SOUND_MODE_LABELS:
             mode = SOUND_MODE_WARNING_ONLY
         self.sound_mode_var = tk.StringVar(value=mode)
+        self.game_mode_var = tk.StringVar(value=GAME_MODE_NORMAL)
+        self.robot_profile_var = tk.StringVar(value=ROBOT_PROFILE_BALANCED)
         self.fullscreen_var = tk.BooleanVar(value=False)
         self._build_menu()
 
@@ -1042,6 +1085,14 @@ class VersusGame:
         self.robot_impact_color = "#f472b6"
 
         self.phase = "player_input"
+        self.player_active_piece = None
+        self.robot_active_piece = None
+        self.player_result = None
+        self.robot_result = None
+        self.robot_target_col = COLS // 2
+        self.normal_player_shift_actions = 0
+        self.normal_turn_started_at = time.time()
+        self.last_fall_tick = time.time()
         self.game_over = False
         self.game_winner = None
         self.game_end_reason = ""
@@ -1073,7 +1124,7 @@ class VersusGame:
 
         self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.", "system")
         self.apply_sound_mode(push_message=False)
-        self.prepare_robot_move()
+        self._initialize_turn_flow()
         self.tick()
 
     def _build_menu(self):
@@ -1100,12 +1151,31 @@ class VersusGame:
                 command=self.apply_sound_mode,
             )
         menu_features.add_cascade(label="Ses Modu", menu=menu_sound)
+        menu_game_mode = tk.Menu(menu_features, tearoff=0)
+        for mode_key, mode_label in GAME_MODE_LABELS.items():
+            menu_game_mode.add_radiobutton(
+                label=mode_label,
+                variable=self.game_mode_var,
+                value=mode_key,
+                command=self.on_game_mode_changed,
+            )
+        menu_features.add_cascade(label="Oyun Modu", menu=menu_game_mode)
+        menu_robot_profile = tk.Menu(menu_features, tearoff=0)
+        for key, label in ROBOT_PROFILE_LABELS.items():
+            menu_robot_profile.add_radiobutton(
+                label=label,
+                variable=self.robot_profile_var,
+                value=key,
+                command=self.on_robot_profile_changed,
+            )
+        menu_features.add_cascade(label="Robot Profili", menu=menu_robot_profile)
         menu_features.add_checkbutton(
             label="Tam Ekran (F11)",
             variable=self.fullscreen_var,
             command=self.toggle_fullscreen,
         )
         menu_features.add_command(label="Simdi Log Analizi", command=self.manual_idle_analysis)
+        menu_features.add_command(label="Tum Loglari Isle (Uzun Surer)", command=self.manual_full_log_analysis)
         menu_features.add_command(label="Yeniden Baslat (R)", command=self.restart_match)
         menu_features.add_separator()
         menu_features.add_command(label="Cikis", command=self.on_quit)
@@ -1216,6 +1286,14 @@ class VersusGame:
         )
         self.push_reason(self.status, "analysis")
 
+    def manual_full_log_analysis(self):
+        trained, reward, robot_replays, human_replays = self.robot_ai.analyze_previous_logs(max_files=10**6, max_lines=10**6)
+        self.status = (
+            f"Tum log analizi: {trained} replay (Robot {robot_replays}, Insan {human_replays}), "
+            f"toplam odul {int(reward)}"
+        )
+        self.push_reason(self.status, "analysis")
+
     def _ensure_player_name(self):
         current_name = str(self.profile.get("player_name", "")).strip()
         if current_name and current_name != "Oyuncu":
@@ -1318,6 +1396,14 @@ class VersusGame:
         self.robot_impact_color = "#f472b6"
 
         self.phase = "player_input"
+        self.player_active_piece = None
+        self.robot_active_piece = None
+        self.player_result = None
+        self.robot_result = None
+        self.robot_target_col = COLS // 2
+        self.normal_player_shift_actions = 0
+        self.normal_turn_started_at = time.time()
+        self.last_fall_tick = time.time()
         self.game_over = False
         self.game_winner = None
         self.game_end_reason = ""
@@ -1329,10 +1415,193 @@ class VersusGame:
         self.last_proposal_banner = "Henüz öneri yok"
 
         self.push_reason("Yeni mac baslatildi. Robot belleigi korunarak oyun sifirlandi.", "system")
-        self.prepare_robot_move()
+        self._initialize_turn_flow()
+
+    def _is_normal_mode(self):
+        return True
+
+    def on_game_mode_changed(self):
+        mode = self.game_mode_var.get()
+        self.push_reason(f"Oyun modu degisti: {GAME_MODE_LABELS.get(mode, mode)}", "system")
+        self.restart_match()
+
+    def on_robot_profile_changed(self):
+        profile = self.robot_profile_var.get()
+        self.push_reason(f"Robot profili: {ROBOT_PROFILE_LABELS.get(profile, profile)}", "system")
+
+    def _initialize_turn_flow(self):
+        if self._is_normal_mode():
+            self._start_normal_mode_turn()
+        else:
+            self.phase = "player_input"
+            self.prepare_robot_move()
 
     def _can_place(self, board, col):
         return first_empty_from_bottom(board, col) is not None
+
+    def _find_spawn_col(self, board, preferred_col):
+        if 0 <= preferred_col < COLS and board[0][preferred_col] is EMPTY:
+            return preferred_col
+        for radius in range(1, COLS):
+            left = preferred_col - radius
+            right = preferred_col + radius
+            if left >= 0 and board[0][left] is EMPTY:
+                return left
+            if right < COLS and board[0][right] is EMPTY:
+                return right
+        return None
+
+    def _start_normal_mode_turn(self):
+        if self.game_over:
+            return
+
+        self.phase = "falling"
+        self.flash_player = []
+        self.flash_robot = []
+        self.normal_player_shift_actions = 0
+        self.normal_turn_started_at = time.time()
+        self.last_fall_tick = time.time()
+
+        self.prepare_robot_move()
+        self.robot_target_col = self.robot_col
+
+        player_spawn_col = self._find_spawn_col(self.player_board, self.player_col)
+        if player_spawn_col is None:
+            self._set_game_over("robot", "Insan icin giris kolonu dolu")
+            return
+
+        robot_spawn_col = self._find_spawn_col(self.robot_board, COLS // 2)
+        if robot_spawn_col is None:
+            self._set_game_over("player", "Robot icin giris kolonu dolu")
+            return
+
+        self.player_col = player_spawn_col
+        self.player_active_piece = {"row": 0, "col": player_spawn_col, "num": self.current_num}
+        self.robot_active_piece = {"row": 0, "col": robot_spawn_col, "num": self.current_num}
+        self.status = "Parcalar dusuyor: her iki taraf saga/sola hareket edebilir"
+
+    def _can_active_move_side(self, board, piece, new_col):
+        if piece is None:
+            return False
+        if not (0 <= new_col < COLS):
+            return False
+        return board[piece["row"]][new_col] is EMPTY
+
+    def _active_can_fall(self, board, piece):
+        if piece is None:
+            return False
+        next_row = piece["row"] + 1
+        if next_row >= ROWS:
+            return False
+        return board[next_row][piece["col"]] is EMPTY
+
+    def _resolve_locked_piece(self, board, num, row, col, level, visual_events):
+        points = 0
+        exploded_cells = 0
+        explosion_count = 0
+
+        if num == "J":
+            if row + 1 < ROWS and board[row + 1][col] is not EMPTY:
+                p, c, e = trigger_joker(board, row + 1, col, visual_events)
+                points += p
+                exploded_cells += c
+                explosion_count += e
+            else:
+                board[row][col] = "J"
+        elif num == "B":
+            board[row][col] = "B"
+            p, c, e = trigger_bomb(board, row, col, visual_events)
+            points += p
+            exploded_cells += c
+            explosion_count += e
+        else:
+            board[row][col] = num
+
+        after = self._resolve_after_lock(
+            board,
+            level,
+            visual_events,
+            joker_triggered=(num == "J"),
+            bomb_triggered=(num == "B"),
+        )
+
+        points += after["points"]
+        exploded_cells += after["cleared"]
+        explosion_count += after["explosions"]
+
+        return {
+            "row": row,
+            "col": col,
+            "points": points,
+            "exploded_cells": exploded_cells,
+            "explosions": explosion_count,
+            "combo_mult": after["combo_mult"],
+        }
+
+    def _normal_mode_step(self):
+        if self.game_over or not self._is_normal_mode() or self.phase != "falling":
+            return
+
+        now = time.time()
+        fall_delay = max(MIN_FALL_DELAY, BASE_FALL_DELAY - (self.level - 1) * 0.02)
+        if now - self.last_fall_tick < fall_delay:
+            return
+        self.last_fall_tick = now
+
+        if self.robot_active_piece is not None:
+            target = self.robot_target_col
+            current_col = self.robot_active_piece["col"]
+            if target < current_col and self._can_active_move_side(self.robot_board, self.robot_active_piece, current_col - 1):
+                self.robot_active_piece["col"] = current_col - 1
+            elif target > current_col and self._can_active_move_side(self.robot_board, self.robot_active_piece, current_col + 1):
+                self.robot_active_piece["col"] = current_col + 1
+
+        if self.player_active_piece is not None:
+            if self._active_can_fall(self.player_board, self.player_active_piece):
+                self.player_active_piece["row"] += 1
+            else:
+                p = self.player_active_piece
+                self.player_active_piece = None
+                self.player_result = self._resolve_locked_piece(
+                    self.player_board,
+                    p["num"],
+                    p["row"],
+                    p["col"],
+                    self.level,
+                    self.flash_player,
+                )
+
+        if self.robot_active_piece is not None:
+            if self._active_can_fall(self.robot_board, self.robot_active_piece):
+                self.robot_active_piece["row"] += 1
+            else:
+                p = self.robot_active_piece
+                self.robot_active_piece = None
+                self.robot_result = self._resolve_locked_piece(
+                    self.robot_board,
+                    p["num"],
+                    p["row"],
+                    p["col"],
+                    self.level,
+                    self.flash_robot,
+                )
+
+        if self.player_active_piece is None and self.robot_active_piece is None:
+            move_player = {
+                "col": self.player_result.get("col", self.player_col),
+                "fast": False,
+                "shift_actions": self.normal_player_shift_actions,
+                "auto_reason": "normal_continuous_fall",
+            }
+            move_robot = {
+                "col": self.robot_result.get("col", self.robot_col),
+                "fast": False,
+                "shift_actions": 0,
+                "auto_reason": "normal_continuous_fall",
+            }
+            self._finalize_turn(self.player_result, self.robot_result, move_player, move_robot)
+            self.player_result = None
+            self.robot_result = None
 
     def _drop_number(self, board, num, col, fast):
         row = first_empty_from_bottom(board, col)
@@ -1507,6 +1776,150 @@ class VersusGame:
             "combo_mult": after["combo_mult"],
         }
 
+    def _robot_rule_bonus(self, robot_result):
+        if not self.robot_meta:
+            return 0.0
+        potential = float(self.robot_meta.get("potential_explosions", 0) or 0)
+        risk_val = float(self.robot_meta.get("risk", 0.0) or 0.0)
+        cleared = float(robot_result.get("exploded_cells", 0) or 0)
+        bonus = 0.0
+        if potential > 0 and cleared > 0:
+            bonus += 2.0
+        bonus += min(3.0, cleared * 0.15)
+        bonus += max(0.0, (0.45 - risk_val) * 2.0)
+        if str(self.robot_meta.get("priority", "")).lower().startswith("g") and risk_val < 0.35:
+            bonus += 1.0
+        return bonus
+
+    def _finalize_turn(self, player_result, robot_result, move_player, move_robot):
+        if player_result is None or robot_result is None:
+            self._set_game_over("draw", "Hamle uygulanamadi")
+            return
+
+        self.player_score += player_result["points"]
+        self.robot_score += robot_result["points"]
+
+        self._trigger_explosion_feedback("player", player_result["explosions"], player_result["exploded_cells"])
+        self._trigger_explosion_feedback("robot", robot_result["explosions"], robot_result["exploded_cells"])
+
+        self.level = max(1, max(self.player_score, self.robot_score) // 60 + 1)
+
+        strategy_update = "none"
+        if self.robot_meta and self.robot_meta.get("used_proposal"):
+            strategy_update = "new_strategy_applied"
+        elif self.robot_meta and self.robot_meta.get("proposal"):
+            strategy_update = "proposal_evaluated_rejected"
+
+        if self.robot_meta and isinstance(self.robot_meta.get("x"), list):
+            mode = self.game_mode_var.get()
+            player_points = float(player_result.get("points", 0) or 0)
+            robot_points = float(robot_result.get("points", 0) or 0)
+            penalty = max(0.0, player_points - robot_points)
+            risk_penalty = max(0.0, float(self.robot_meta.get("risk", 0.0)) * 2.0)
+            guided_reward = robot_points
+            if mode == GAME_MODE_NORMAL:
+                guided_reward = robot_points - (penalty * 0.45) - risk_penalty + (self._robot_rule_bonus(robot_result) * 0.5)
+            elif mode == GAME_MODE_HARD:
+                guided_reward = robot_points - (penalty * 0.9) - (risk_penalty * 1.3) + self._robot_rule_bonus(robot_result)
+            self.robot_ai.learn_from_move(
+                self.robot_meta["x"],
+                guided_reward,
+                self.robot_meta.get("strategy", "balance"),
+            )
+
+        player_log = self._compose_log_entry(
+            "Human",
+            self.player_board,
+            self.current_num,
+            self.next_num,
+            "human",
+            move_player,
+            player_result,
+            "Insan, gelen sayiyi stratejik konuma birakti",
+            {
+                "strategy_update": "none",
+                "potential_explosions": potential_sum9_count(self.player_board, self.current_num, move_player["col"]),
+                "risk": risk_score(self.player_board, move_player["col"]),
+                "priority": "Kullanici tercihi",
+                "proposal_decision": "N/A",
+            },
+        )
+
+        robot_logic = self.robot_meta.get("reason", "Robot secimi") if self.robot_meta else "Robot secimi"
+        robot_extra = {
+            "strategy_update": strategy_update,
+            "potential_explosions": self.robot_meta.get("potential_explosions", 0) if self.robot_meta else 0,
+            "risk": self.robot_meta.get("risk", 0.0) if self.robot_meta else 0.0,
+            "priority": self.robot_meta.get("priority", "N/A") if self.robot_meta else "N/A",
+            "proposal": self.robot_meta.get("proposal", None) if self.robot_meta else None,
+            "proposal_decision": self.robot_meta.get("decision", "N/A") if self.robot_meta else "N/A",
+            "robot_features": self.robot_meta.get("x", None) if self.robot_meta else None,
+        }
+        robot_log = self._compose_log_entry(
+            "Robot",
+            self.robot_board,
+            self.current_num,
+            self.next_num,
+            self.robot_meta.get("strategy", "balance") if self.robot_meta else "balance",
+            move_robot,
+            robot_result,
+            robot_logic,
+            robot_extra,
+        )
+
+        self.logger.write(player_log)
+        self.logger.write(robot_log)
+
+        self.push_reason(
+            f"Tur {self.turn}: Insan +{player_result['points']} puan, Robot +{robot_result['points']} puan, robot karar={robot_extra.get('proposal_decision', 'N/A')}",
+            "result",
+        )
+        if self.robot_meta and self.robot_meta.get("proposal"):
+            p = self.robot_meta["proposal"]
+            decision_type = "applied" if self.robot_meta.get("used_proposal") else "rejected"
+            self.push_reason(
+                f"Yeni strateji onerisi goruldu: {p['candidate']['name']} ({p.get('engine_name', 'unknown')}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}",
+                decision_type,
+            )
+
+        self.flash_until = time.time() + 0.34
+
+        if self.turn > 10:
+            player_top = board_touches_top(self.player_board)
+            robot_top = board_touches_top(self.robot_board)
+            if player_top and not robot_top:
+                self._set_game_over("robot", "Insan ust satira ulasti ve kaybetti")
+            elif robot_top and not player_top:
+                self._set_game_over("player", "Robot ust satira ulasti ve kaybetti")
+            elif player_top and robot_top:
+                self._set_game_over("draw", "Iki taraf da ust satira ulasti")
+
+            player_pieces = piece_count(self.player_board)
+            robot_pieces = piece_count(self.robot_board)
+            if not self.game_over:
+                if player_pieces <= 1 and robot_pieces > 1:
+                    self._set_game_over("player", "Insan tahtada 1/0 tasla kazandi")
+                elif robot_pieces <= 1 and player_pieces > 1:
+                    self._set_game_over("robot", "Robot tahtada 1/0 tasla kazandi")
+                elif player_pieces <= 1 and robot_pieces <= 1:
+                    self._set_game_over("draw", "Iki taraf da 1/0 tasa indi")
+
+        self.turn += 1
+        self.current_num = self.next_num
+        self.next_num = spawn_value(self.level)
+
+        self.player_col = COLS // 2
+        self.player_fast = False
+        self.player_shift_actions = 0
+
+        self.robot_ai.save_memory()
+
+        if self.game_over:
+            return
+
+        self.last_input_time = time.time()
+        self._initialize_turn_flow()
+
     def _compose_log_entry(self, player_type, board, num, next_num, strategy, move, result, logic, extra):
         return {
             "timestamp": datetime.utcnow().isoformat(),
@@ -1532,7 +1945,14 @@ class VersusGame:
         }
 
     def prepare_robot_move(self):
-        col, meta = self.robot_ai.choose_action(self.robot_board, self.current_num, self.next_num, self.level)
+        col, meta = self.robot_ai.choose_action(
+            self.robot_board,
+            self.current_num,
+            self.next_num,
+            self.level,
+            game_mode=self.game_mode_var.get(),
+            robot_profile=self.robot_profile_var.get(),
+        )
         self.robot_col = col
         self.robot_fast = True
         self.robot_meta = meta
@@ -1579,32 +1999,6 @@ class VersusGame:
             self.flash_robot,
         )
 
-        if player_result is None or robot_result is None:
-            self._set_game_over("draw", "Hamle uygulanamadi")
-            return
-
-        self.player_score += player_result["points"]
-        self.robot_score += robot_result["points"]
-
-        self._trigger_explosion_feedback("player", player_result["explosions"], player_result["exploded_cells"])
-        self._trigger_explosion_feedback("robot", robot_result["explosions"], robot_result["exploded_cells"])
-
-        self.level = max(1, max(self.player_score, self.robot_score) // 60 + 1)
-
-        strategy_update = "none"
-        if self.robot_meta and self.robot_meta.get("used_proposal"):
-            strategy_update = "new_strategy_applied"
-        elif self.robot_meta and self.robot_meta.get("proposal"):
-            strategy_update = "proposal_evaluated_rejected"
-
-        # Robot online ogrenme
-        if self.robot_meta and isinstance(self.robot_meta.get("x"), list):
-            self.robot_ai.learn_from_move(
-                self.robot_meta["x"],
-                robot_result["points"],
-                self.robot_meta.get("strategy", "balance"),
-            )
-
         move_player = {
             "col": self.player_col,
             "fast": bool(human_fast),
@@ -1617,106 +2011,9 @@ class VersusGame:
             "shift_actions": 0,
             "auto_reason": None,
         }
+        self._finalize_turn(player_result, robot_result, move_player, move_robot)
 
-        player_log = self._compose_log_entry(
-            "Human",
-            self.player_board,
-            self.current_num,
-            self.next_num,
-            "human",
-            move_player,
-            player_result,
-            "Insan, gelen sayiyi stratejik konuma birakti",
-            {
-                "strategy_update": "none",
-                "potential_explosions": potential_sum9_count(self.player_board, self.current_num, self.player_col),
-                "risk": risk_score(self.player_board, self.player_col),
-                "priority": "Kullanici tercihi",
-                "proposal_decision": "N/A",
-            },
-        )
-
-        robot_logic = self.robot_meta.get("reason", "Robot secimi") if self.robot_meta else "Robot secimi"
-        robot_extra = {
-            "strategy_update": strategy_update,
-            "potential_explosions": self.robot_meta.get("potential_explosions", 0) if self.robot_meta else 0,
-            "risk": self.robot_meta.get("risk", 0.0) if self.robot_meta else 0.0,
-            "priority": self.robot_meta.get("priority", "N/A") if self.robot_meta else "N/A",
-            "proposal": self.robot_meta.get("proposal", None) if self.robot_meta else None,
-            "proposal_decision": self.robot_meta.get("decision", "N/A") if self.robot_meta else "N/A",
-            "robot_features": self.robot_meta.get("x", None) if self.robot_meta else None,
-        }
-        robot_log = self._compose_log_entry(
-            "Robot",
-            self.robot_board,
-            self.current_num,
-            self.next_num,
-            self.robot_meta.get("strategy", "balance") if self.robot_meta else "balance",
-            move_robot,
-            robot_result,
-            robot_logic,
-            robot_extra,
-        )
-
-        self.logger.write(player_log)
-        self.logger.write(robot_log)
-
-        self.push_reason(
-            f"Tur {self.turn}: Insan +{player_result['points']} puan, Robot +{robot_result['points']} puan, robot karar={robot_extra.get('proposal_decision', 'N/A')}",
-            "result",
-        )
-        if self.robot_meta and self.robot_meta.get("proposal"):
-            p = self.robot_meta["proposal"]
-            decision_type = "applied" if self.robot_meta.get("used_proposal") else "rejected"
-            self.push_reason(
-                f"Yeni strateji onerisi goruldu: {p['candidate']['name']} ({p.get('engine_name', 'unknown')}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}",
-                decision_type,
-            )
-
-        self.flash_until = time.time() + 0.24
-
-        # Oyun dengesi icin ilk 10 hamlede oyun sonu kontrolu kapali.
-        if self.turn > 10:
-            # Yeni kural 1: Ekranin en ustune ilk ulasan kaybeder.
-            player_top = board_touches_top(self.player_board)
-            robot_top = board_touches_top(self.robot_board)
-            if player_top and not robot_top:
-                self._set_game_over("robot", "Insan ust satira ulasti ve kaybetti")
-            elif robot_top and not player_top:
-                self._set_game_over("player", "Robot ust satira ulasti ve kaybetti")
-            elif player_top and robot_top:
-                self._set_game_over("draw", "Iki taraf da ust satira ulasti")
-
-            # Yeni kural 2: Ekranda 1 veya 0 tas kalan kazanir.
-            player_pieces = piece_count(self.player_board)
-            robot_pieces = piece_count(self.robot_board)
-            if not self.game_over:
-                if player_pieces <= 1 and robot_pieces > 1:
-                    self._set_game_over("player", "Insan tahtada 1/0 tasla kazandi")
-                elif robot_pieces <= 1 and player_pieces > 1:
-                    self._set_game_over("robot", "Robot tahtada 1/0 tasla kazandi")
-                elif player_pieces <= 1 and robot_pieces <= 1:
-                    self._set_game_over("draw", "Iki taraf da 1/0 tasa indi")
-
-        self.turn += 1
-        self.current_num = self.next_num
-        self.next_num = spawn_value(self.level)
-
-        self.player_col = COLS // 2
-        self.player_fast = False
-        self.player_shift_actions = 0
-
-        self.prepare_robot_move()
-        self.robot_ai.save_memory()
-
-        if self.game_over:
-            # Yukaridaki kosullar neden-sonuc metnini zaten status'a yazar.
-            pass
-        else:
-            self.status = "Insan hamlesini bekliyor"
-            self.last_input_time = time.time()
-
-    def _draw_board(self, board, x0, y0, title, active_col=None, active_num=None, flash_cells=None, flash_style="player"):
+    def _draw_board(self, board, x0, y0, title, active_col=None, active_num=None, active_piece=None, flash_cells=None, flash_style="player"):
         self.canvas.create_text(x0, y0 - 22, anchor="nw", text=title, fill="#e5e7eb", font=("Segoe UI", 13, "bold"))
         self.canvas.create_rectangle(x0 - 2, y0 - 2, x0 + BOARD_W + 2, y0 + BOARD_H + 2, outline="#94a3b8", width=2)
 
@@ -1735,6 +2032,16 @@ class VersusGame:
                 fill, label = color_for(v)
                 if active_col is not None and active_num is not None and r == 0 and c == active_col and v is EMPTY and not self.game_over:
                     afill, alabel = color_for(active_num)
+                    fill = afill
+                    label = alabel
+                if (
+                    active_piece is not None
+                    and r == active_piece.get("row")
+                    and c == active_piece.get("col")
+                    and v is EMPTY
+                    and not self.game_over
+                ):
+                    afill, alabel = color_for(active_piece.get("num"))
                     fill = afill
                     label = alabel
 
@@ -1777,6 +2084,7 @@ class VersusGame:
             self.player_name,
             active_col=self.player_col if self.phase == "player_input" and not self.game_over else None,
             active_num=self.current_num,
+            active_piece=self.player_active_piece if self._is_normal_mode() else None,
             flash_cells=self.flash_player,
             flash_style="player",
         )
@@ -1788,6 +2096,7 @@ class VersusGame:
             "Robot",
             active_col=self.robot_col if self.phase == "player_input" and not self.game_over else None,
             active_num=self.current_num,
+            active_piece=self.robot_active_piece if self._is_normal_mode() else None,
             flash_cells=self.flash_robot,
             flash_style="robot",
         )
@@ -1967,7 +2276,15 @@ class VersusGame:
             self.perform_turn(human_fast=False, auto_reason="5s_idle_auto_drop")
 
     def on_left(self, _event=None):
-        if self.game_over or self.phase != "player_input":
+        if self.game_over:
+            return
+        if self._is_normal_mode() and self.phase == "falling":
+            if self.player_active_piece and self._can_active_move_side(self.player_board, self.player_active_piece, self.player_active_piece["col"] - 1):
+                self.player_active_piece["col"] -= 1
+                self.normal_player_shift_actions += 1
+                self.last_input_time = time.time()
+            return
+        if self.phase != "player_input":
             return
         if self.player_col > 0:
             self.player_col -= 1
@@ -1977,7 +2294,15 @@ class VersusGame:
                 self.perform_turn(human_fast=False, auto_reason="max_shift_auto_drop")
 
     def on_right(self, _event=None):
-        if self.game_over or self.phase != "player_input":
+        if self.game_over:
+            return
+        if self._is_normal_mode() and self.phase == "falling":
+            if self.player_active_piece and self._can_active_move_side(self.player_board, self.player_active_piece, self.player_active_piece["col"] + 1):
+                self.player_active_piece["col"] += 1
+                self.normal_player_shift_actions += 1
+                self.last_input_time = time.time()
+            return
+        if self.phase != "player_input":
             return
         if self.player_col < COLS - 1:
             self.player_col += 1
@@ -1987,19 +2312,35 @@ class VersusGame:
                 self.perform_turn(human_fast=False, auto_reason="max_shift_auto_drop")
 
     def on_drop_fast(self, _event=None):
-        if self.game_over or self.phase != "player_input":
+        if self.game_over:
+            return
+        if self._is_normal_mode() and self.phase == "falling":
+            self.last_input_time = time.time()
+            if self.player_active_piece and self._active_can_fall(self.player_board, self.player_active_piece):
+                self.player_active_piece["row"] += 1
+            if self.robot_active_piece and self._active_can_fall(self.robot_board, self.robot_active_piece):
+                self.robot_active_piece["row"] += 1
+            return
+        if self.phase != "player_input":
             return
         self.last_input_time = time.time()
         self.perform_turn(human_fast=True, auto_reason=None)
 
     def on_drop_normal(self, _event=None):
-        if self.game_over or self.phase != "player_input":
+        if self.game_over:
+            return
+        if self._is_normal_mode() and self.phase == "falling":
+            return
+        if self.phase != "player_input":
             return
         self.last_input_time = time.time()
         self.perform_turn(human_fast=False, auto_reason=None)
 
     def tick(self):
-        self._idle_analyze_if_needed()
+        if self._is_normal_mode():
+            self._normal_mode_step()
+        else:
+            self._idle_analyze_if_needed()
         if self._music_enabled():
             self.music.update()
         if self.game_over and not self.match_recorded:

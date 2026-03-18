@@ -387,3 +387,31 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 - 25 saniye zorunlu parca degistirme davranisi kaldirildi.
 - SID gecisi yalnizca aktif parca dogal olarak bittiginde tetiklenir.
 - Oynatici cagrisi tek-parca davranisi icin `-os` secenegi ile yapilir.
+
+## 18. Surekli Dusus + AI Zorluk Modlari (Append-Only)
+
+### 18.1 Oynanis akisi
+- Surekli dusus tum oyun akisinda aktif olacak sekilde tasarlandi.
+- Insan ve robot ayni sayi akisini kullanirken aktif taslarini dusus sirasinda yatay yonlendirebilir.
+- Asagi tusu aktif turde hizlandirma girdisi olarak her iki tarafta da uygulanir.
+
+### 18.2 Oyun modu semantigi
+- Oyun modu secimi artik fizik mod degil AI zorluk katmanidir:
+	- `Kolay`: odul agirlikli ogrenme.
+	- `Normal`: odul + orta ceza + risk dengeleme.
+	- `Zor`: odul + guclu ceza + kural bonusu ile daha agresif ogrenme.
+
+### 18.3 Robot profili
+- Mod seciminden bagimsiz robot profil secimi eklendi:
+	- `Dengeli`
+	- `Agresif`
+	- `Savunmaci`
+- Profiller, NN/strateji agirlik dengesini karar asamasinda degistirir.
+
+### 18.4 Ogrenme verisi korunumu
+- `ai_memory/robot_brain.json` dahil mevcut ogrenme dosyalari silinmez.
+- Yeni kurallar mevcut modelin ustune ek ogrenme sinyali olarak uygulanir.
+
+### 18.5 Toplu log egitimi
+- Menüye `Tum Loglari Isle (Uzun Surer)` komutu eklenmistir.
+- Bu komut var olan `.jsonl` log havuzunu topluca replay egitimine alir.

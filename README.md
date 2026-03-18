@@ -239,3 +239,23 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 ### 2026-03-18 - SID transition adjustment (TR/EN)
 - TR: 25 saniye zorunlu parca gecisi kaldirildi. Gecis artik sadece SID parcasi dogal olarak bittiginde yapilir.
 - EN: The forced 25-second track switch was removed. Transition now occurs only when the current SID track ends naturally.
+
+## Oynanis ve AI Mod Eki (Append-Only)
+
+### 2026-03-19 - Oynanis akisi (TR)
+- Surekli dusus mantigi oyun genelinde aktiftir: insan ve robot taslari ayni tur akisi icinde adim adim asagi iner.
+- Dusus sirasinda insan tasi saga/sola yonlendirilebilir.
+- Asagi tusu normal mod akisinda hem insan hem robot aktif tasina bir adim hizlandirma uygular.
+- Yukari itme davranisi sutun bazli fiziksel kaydirma ile duzeltildi; tek hucre hafiza kaymasi etkisi azaltildi.
+
+### 2026-03-19 - Oyun modu ve robot profili (TR)
+- Menüde oyun modu `Kolay / Normal / Zor` olarak AI egitim zorlugu secimi icin kullanilir.
+- Robot profili ayri menuden secilir: `Dengeli / Agresif / Savunmaci`.
+- Mod secimi surekli dususu kapatmaz; sadece AI ogrenme/karar davranisini degistirir.
+
+### 2026-03-19 - Ogrenme notlari (TR)
+- Mevcut ogrenme belleği korunur; `ai_memory` dosyalari silinmez.
+- Kolay mod agirlikli odul odaklidir.
+- Normal mod odul + orta seviye ceza (geri kalma/risk) ile egitilir.
+- Zor mod odul + daha guclu ceza + kural bonusu (patlama/risk) ile egitilir.
+- `Ozellikler -> Tum Loglari Isle (Uzun Surer)` ile loglar toplu replay egitimine alinabilir.

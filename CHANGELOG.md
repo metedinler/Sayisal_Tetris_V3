@@ -64,3 +64,12 @@ Kurallar:
 - SID gecisi artik sadece calan parcasi dogal olarak bittiginde yapilir.
 - Oynatici cagrisi `-os` secenegi ile tek parca davranisina alindi.
 - EXE yeniden derlendi ve dist artefacti olusturuldu.
+
+## 2026-03-19 - Surekli Dusus + AI Mod/Profil Guncellemesi
+- Surekli dusus mekanigi oyun genelinde aktif hale getirildi.
+- Asagi tusu aktif turde hem insan hem robot tasini bir adim hizlandirir.
+- Oyun modu menusu `Kolay / Normal / Zor` AI ogrenme zorlugu olacak sekilde duzenlendi.
+- Robot profil secimi eklendi: `Dengeli / Agresif / Savunmaci`.
+- Ogrenme verisi silinmeden odul-ceza ve kural bonusu mode bagli sekilde uygulanmaya baslandi.
+- `Tum Loglari Isle (Uzun Surer)` menusu ile toplu replay egitimi eklendi.
+- Yukari itme davranisi sutun bazli fiziksel kaydirma mantigina yaklastirildi.
