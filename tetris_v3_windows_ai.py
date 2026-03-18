@@ -13,16 +13,12 @@ from datetime import datetime
 import io
 import struct
 import wave
+from sid_player import SidMusicManager
 
 try:
     import winsound
 except Exception:
     winsound = None
-
-try:
-    import vlc
-except Exception:
-    vlc = None
 
 ROWS, COLS = 18, 8
 EMPTY = None
@@ -78,8 +74,6 @@ MODEL_PATH = os.path.join(MEMORY_DIR, "robot_brain.json")
 PROFILE_PATH = os.path.join(MEMORY_DIR, "player_profile.json")
 AUDIO_SETTINGS_PATH = os.path.join(MEMORY_DIR, "audio_settings.json")
 SID_DIR = os.path.join(ROOT_DIR, "sid")
-SID_PLAYLIST_PATH = os.path.join(MEMORY_DIR, "sid_playlist.txt")
-SID_STATE_PATH = os.path.join(MEMORY_DIR, "sid_state.json")
 
 SOUND_MODE_SILENT = "silent"
 SOUND_MODE_NO_MUSIC = "no_music"
@@ -966,127 +960,6 @@ class RobotLearner:
         return trained, total_reward, robot_replays, human_replays
 
 
-class SidMusicManager:
-    def __init__(self):
-        self.available = vlc is not None
-        self.player = None
-        self.instance = None
-        self.playlist = []
-        self.current_index = -1
-        self.current_track = ""
-
-        if self.available:
-            try:
-                self.instance = vlc.Instance("--intf", "dummy", "--no-video")
-                self.player = self.instance.media_player_new()
-            except Exception:
-                self.available = False
-                self.instance = None
-                self.player = None
-
-    def _read_text_lines(self, path):
-        if not os.path.exists(path):
-            return []
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return [x.strip() for x in f.readlines() if x.strip()]
-        except Exception:
-            return []
-
-    def _write_text_lines(self, path, lines):
-        with open(path, "w", encoding="utf-8") as f:
-            for item in lines:
-                f.write(f"{item}\n")
-
-    def _load_state(self):
-        default = {"last_track": "", "last_index": -1}
-        if not os.path.exists(SID_STATE_PATH):
-            return default
-        try:
-            with open(SID_STATE_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                default.update(data)
-            return default
-        except Exception:
-            return default
-
-    def _save_state(self, track_name, index):
-        payload = {
-            "last_track": track_name,
-            "last_index": int(index),
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        with open(SID_STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-
-    def rebuild_playlist(self):
-        existing = self._read_text_lines(SID_PLAYLIST_PATH)
-        files = [
-            x
-            for x in os.listdir(SID_DIR)
-            if os.path.isfile(os.path.join(SID_DIR, x)) and x.lower().endswith(".sid")
-        ]
-        files_sorted = sorted(files, key=lambda x: x.lower())
-
-        preserved = [x for x in existing if x in files_sorted]
-        new_items = [x for x in files_sorted if x not in existing]
-        merged = preserved + sorted(new_items, key=lambda x: x.lower())
-
-        self.playlist = merged
-        self._write_text_lines(SID_PLAYLIST_PATH, merged)
-
-    def start(self):
-        self.rebuild_playlist()
-        if not self.playlist:
-            return False
-        state = self._load_state()
-
-        next_index = 0
-        last_track = state.get("last_track", "")
-        if last_track in self.playlist:
-            next_index = (self.playlist.index(last_track) + 1) % len(self.playlist)
-        else:
-            idx = int(state.get("last_index", -1))
-            if 0 <= idx < len(self.playlist):
-                next_index = (idx + 1) % len(self.playlist)
-
-        return self.play_index(next_index)
-
-    def play_index(self, index):
-        if not self.available or not self.playlist:
-            return False
-        index = index % len(self.playlist)
-        path = os.path.join(SID_DIR, self.playlist[index])
-        if not os.path.exists(path):
-            return False
-        try:
-            media = self.instance.media_new(path)
-            self.player.set_media(media)
-            self.player.play()
-            self.current_index = index
-            self.current_track = self.playlist[index]
-            self._save_state(self.current_track, self.current_index)
-            return True
-        except Exception:
-            return False
-
-    def update(self):
-        if not self.available or not self.playlist or self.player is None:
-            return
-        state = self.player.get_state()
-        if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
-            self.play_index((self.current_index + 1) % len(self.playlist))
-
-    def stop(self):
-        if self.player is None:
-            return
-        try:
-            self.player.stop()
-        except Exception:
-            pass
-
-
 class GameLogger:
     def __init__(self):
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1153,7 +1026,12 @@ class VersusGame:
         self.robot_meta = None
 
         self.logger = GameLogger()
-        self.music = SidMusicManager()
+        self.music = SidMusicManager(
+            root_dir=ROOT_DIR,
+            memory_dir=MEMORY_DIR,
+            sid_dir=SID_DIR,
+            player_cmd="sidplayfp",
+        )
 
         self.flash_player = []
         self.flash_robot = []

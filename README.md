@@ -216,3 +216,8 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 ### Arayuz notu (TR)
 - Kontroller bolumu sag panelde, Profil ve Robot Durumu alaninin ustune tasinmistir.
 - Orta panelde tur/seviye ve gelen-sonraki sayi kutulari korunmustur.
+
+### SID player secimi (TR)
+- SID oynatma artik ayri modulde yonetilir: `sid_player.py`.
+- HVSC player listesine gore komut satiri playlist icin secilen player: `sidplay-fp` (`sidplayfp`).
+- Tam Ses modunda `sidplayfp` komutu ile SID dosyalari sira ile oynatilir.

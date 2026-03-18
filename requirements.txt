@@ -1,2 +1,5 @@
-# Optional audio/music dependency for SID playback and advanced effects.
+# Optional audio helper (legacy).
 python-vlc>=3.0.20123
+
+# Preferred SID playback now uses external command-line player from HVSC list:
+# sidplay-fp (command: sidplayfp)

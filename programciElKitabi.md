@@ -361,3 +361,8 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 ### 16.3 Teknik not
 - SID calicisi `python-vlc` kutuphanesi ile yonetilir.
 - Ses modu degisimi menuden aninda uygulanir ve `ai_memory/audio_settings.json` icinde saklanir.
+
+### 16.4 Modul ayrimi ve player secimi
+- SID calma mantigi ana oyundan ayrilarak `sid_player.py` modulune tasinmistir.
+- HVSC players listesinden komut satiri playlist icin secilen player: `sidplay-fp` (`sidplayfp`).
+- Uygulama Tam Ses modunda `sidplayfp <dosya.sid>` cagrisi ile sarkilari tek tek calistirir.

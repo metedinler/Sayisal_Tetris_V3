@@ -46,3 +46,8 @@ Kurallar:
 - Tam Ses modunda EXE yanindaki `sid/` klasorunden SID dosyalari sira ile calinir.
 - SID playlist ve son calinan kaydi kalici dosyalarda tutulur; bir sonraki acilista bir sonraki SID'den devam edilir.
 - Yeni SID dosyalari playlist bozulmadan sona eklenir, liste bitince basa doner.
+
+## 2026-03-18 - SID Modulu Ayrimi
+- SID oynatma kodu ayri modulde toplandi: `sid_player.py`.
+- HVSC player listesinden komut satiri playlist icin secilen player `sidplay-fp` (`sidplayfp`) olarak sabitlendi.
+- Tam Ses modunda SID dosyalari harici player sureci ile track-track oynatilir.
