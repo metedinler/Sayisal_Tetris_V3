@@ -1,1 +1,2 @@
-# No external package is required for V3 window mode.
+# Optional audio/music dependency for SID playback and advanced effects.
+python-vlc>=3.0.20123

@@ -340,3 +340,24 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 	- `Strateji Slotlari: ACIK n / KAPALI m`
 	- `Oneri Kapisi: ACIK/KAPALI`
 - Bu alanlar robotun o anki strateji kullanim durumunu gozlenebilir yapar.
+
+## 16. SID Muzik ve Ses Modlari (Append-Only)
+
+### 16.1 Ses modlari
+- `silent`: muzik ve efekt kapali.
+- `no_music`: efekt acik, muzik kapali.
+- `no_effects`: muzik acik, efekt kapali.
+- `warning_only`: mevcut bip tabanli uyari efektleri acik.
+- `full`: SID muzik + gelismis dalga (wave) tabanli efekt sesleri acik.
+
+### 16.2 SID playlist yonetimi
+- SID dizini: EXE yaninda `sid/`.
+- Playlist dosyasi: `ai_memory/sid_playlist.txt`.
+- Durum dosyasi: `ai_memory/sid_state.json`.
+- Her acilista dizin taranir; yeni SID dosyalari liste sonuna eklenir.
+- Son calinan track kaydedilir; sonraki acilista bir sonraki track ile devam edilir.
+- Liste bitince dairesel olarak basa doner.
+
+### 16.3 Teknik not
+- SID calicisi `python-vlc` kutuphanesi ile yonetilir.
+- Ses modu degisimi menuden aninda uygulanir ve `ai_memory/audio_settings.json` icinde saklanir.

@@ -38,3 +38,11 @@ Kurallar:
 - Tur/seviye + gelen/sonraki sayi bloklari iki tahta arasindaki orta panele tasindi.
 - Kontroller basligi orta panelde en uste alindi.
 - Robot strateji gorunurlugune `ACIK/KAPALI` durum metinleri eklendi.
+
+## 2026-03-18 - Ses Modlari ve SID Muzik
+- Kontroller bolumu sag panelde Profil ve Robot Durumu alaninin ustune tasindi.
+- Oyun acilisinda ekran boyutu ekran cozumune gore hesaplanarak ilk yerlesim tasmasi azaltildi.
+- Ses modu secenekleri eklendi: Sesiz, Muziksiz, Efektsiz, Sadece Uyari, Tam Ses.
+- Tam Ses modunda EXE yanindaki `sid/` klasorunden SID dosyalari sira ile calinir.
+- SID playlist ve son calinan kaydi kalici dosyalarda tutulur; bir sonraki acilista bir sonraki SID'den devam edilir.
+- Yeni SID dosyalari playlist bozulmadan sona eklenir, liste bitince basa doner.

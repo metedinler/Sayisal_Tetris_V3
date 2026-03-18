@@ -195,3 +195,24 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - Turn/level/current-next number indicators were moved into a centered middle panel between boards.
 - Controls header is now placed at the top of that middle panel.
 - Robot strategy usage visibility now includes OPEN/CLOSED style labels on screen.
+
+## Ses ve Muzik Eki (Append-Only)
+
+### Yeni ses modlari (TR)
+- Sesiz: muzik yok, efekt yok.
+- Muziksiz: efekt var, SID muzik yok.
+- Efektsiz: SID muzik var, efekt yok.
+- Sadece Uyari: mevcut bip/uyari efektleri aktif, SID muzik yok.
+- Tam Ses: SID muzik + gelismis efekt sesleri aktif.
+
+### SID calisma kurali (TR)
+- EXE ile ayni klasorde `sid/` altindaki `.sid` dosyalari okunur.
+- Her acilista liste yenilenir ve `ai_memory/sid_playlist.txt` dosyasina yazilir.
+- Yeni gelen SID dosyalari mevcut liste bozulmadan sona eklenir.
+- Son calinan SID bilgisi `ai_memory/sid_state.json` dosyasina yazilir.
+- Uygulama yeniden acildiginda son calinandan degil, bir sonrakinden devam eder.
+- Liste sonuna gelince basa doner.
+
+### Arayuz notu (TR)
+- Kontroller bolumu sag panelde, Profil ve Robot Durumu alaninin ustune tasinmistir.
+- Orta panelde tur/seviye ve gelen-sonraki sayi kutulari korunmustur.

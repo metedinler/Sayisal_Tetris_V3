@@ -10,11 +10,19 @@ from tkinter import messagebox, simpledialog
 import uuid
 from collections import deque
 from datetime import datetime
+import io
+import struct
+import wave
 
 try:
     import winsound
 except Exception:
     winsound = None
+
+try:
+    import vlc
+except Exception:
+    vlc = None
 
 ROWS, COLS = 18, 8
 EMPTY = None
@@ -68,11 +76,30 @@ LOG_DIR = os.path.join(ROOT_DIR, "logs")
 MEMORY_DIR = os.path.join(ROOT_DIR, "ai_memory")
 MODEL_PATH = os.path.join(MEMORY_DIR, "robot_brain.json")
 PROFILE_PATH = os.path.join(MEMORY_DIR, "player_profile.json")
+AUDIO_SETTINGS_PATH = os.path.join(MEMORY_DIR, "audio_settings.json")
+SID_DIR = os.path.join(ROOT_DIR, "sid")
+SID_PLAYLIST_PATH = os.path.join(MEMORY_DIR, "sid_playlist.txt")
+SID_STATE_PATH = os.path.join(MEMORY_DIR, "sid_state.json")
+
+SOUND_MODE_SILENT = "silent"
+SOUND_MODE_NO_MUSIC = "no_music"
+SOUND_MODE_NO_EFFECTS = "no_effects"
+SOUND_MODE_WARNING_ONLY = "warning_only"
+SOUND_MODE_FULL = "full"
+
+SOUND_MODE_LABELS = {
+    SOUND_MODE_SILENT: "Sesiz",
+    SOUND_MODE_NO_MUSIC: "Muziksiz",
+    SOUND_MODE_NO_EFFECTS: "Efektsiz",
+    SOUND_MODE_WARNING_ONLY: "Sadece Uyari",
+    SOUND_MODE_FULL: "Tam Ses",
+}
 
 
 def ensure_dirs():
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(MEMORY_DIR, exist_ok=True)
+    os.makedirs(SID_DIR, exist_ok=True)
 
 
 def default_profile():
@@ -111,6 +138,28 @@ def save_profile(profile):
         payload.update(profile)
     payload["updated_at"] = datetime.utcnow().isoformat()
     with open(PROFILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def load_audio_settings():
+    default = {"sound_mode": SOUND_MODE_WARNING_ONLY}
+    if not os.path.exists(AUDIO_SETTINGS_PATH):
+        return default
+    try:
+        with open(AUDIO_SETTINGS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            default.update(data)
+        return default
+    except Exception:
+        return default
+
+
+def save_audio_settings(settings):
+    payload = {"sound_mode": SOUND_MODE_WARNING_ONLY}
+    if isinstance(settings, dict):
+        payload.update(settings)
+    with open(AUDIO_SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
@@ -917,6 +966,127 @@ class RobotLearner:
         return trained, total_reward, robot_replays, human_replays
 
 
+class SidMusicManager:
+    def __init__(self):
+        self.available = vlc is not None
+        self.player = None
+        self.instance = None
+        self.playlist = []
+        self.current_index = -1
+        self.current_track = ""
+
+        if self.available:
+            try:
+                self.instance = vlc.Instance("--intf", "dummy", "--no-video")
+                self.player = self.instance.media_player_new()
+            except Exception:
+                self.available = False
+                self.instance = None
+                self.player = None
+
+    def _read_text_lines(self, path):
+        if not os.path.exists(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return [x.strip() for x in f.readlines() if x.strip()]
+        except Exception:
+            return []
+
+    def _write_text_lines(self, path, lines):
+        with open(path, "w", encoding="utf-8") as f:
+            for item in lines:
+                f.write(f"{item}\n")
+
+    def _load_state(self):
+        default = {"last_track": "", "last_index": -1}
+        if not os.path.exists(SID_STATE_PATH):
+            return default
+        try:
+            with open(SID_STATE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                default.update(data)
+            return default
+        except Exception:
+            return default
+
+    def _save_state(self, track_name, index):
+        payload = {
+            "last_track": track_name,
+            "last_index": int(index),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        with open(SID_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    def rebuild_playlist(self):
+        existing = self._read_text_lines(SID_PLAYLIST_PATH)
+        files = [
+            x
+            for x in os.listdir(SID_DIR)
+            if os.path.isfile(os.path.join(SID_DIR, x)) and x.lower().endswith(".sid")
+        ]
+        files_sorted = sorted(files, key=lambda x: x.lower())
+
+        preserved = [x for x in existing if x in files_sorted]
+        new_items = [x for x in files_sorted if x not in existing]
+        merged = preserved + sorted(new_items, key=lambda x: x.lower())
+
+        self.playlist = merged
+        self._write_text_lines(SID_PLAYLIST_PATH, merged)
+
+    def start(self):
+        self.rebuild_playlist()
+        if not self.playlist:
+            return False
+        state = self._load_state()
+
+        next_index = 0
+        last_track = state.get("last_track", "")
+        if last_track in self.playlist:
+            next_index = (self.playlist.index(last_track) + 1) % len(self.playlist)
+        else:
+            idx = int(state.get("last_index", -1))
+            if 0 <= idx < len(self.playlist):
+                next_index = (idx + 1) % len(self.playlist)
+
+        return self.play_index(next_index)
+
+    def play_index(self, index):
+        if not self.available or not self.playlist:
+            return False
+        index = index % len(self.playlist)
+        path = os.path.join(SID_DIR, self.playlist[index])
+        if not os.path.exists(path):
+            return False
+        try:
+            media = self.instance.media_new(path)
+            self.player.set_media(media)
+            self.player.play()
+            self.current_index = index
+            self.current_track = self.playlist[index]
+            self._save_state(self.current_track, self.current_index)
+            return True
+        except Exception:
+            return False
+
+    def update(self):
+        if not self.available or not self.playlist or self.player is None:
+            return
+        state = self.player.get_state()
+        if state in (vlc.State.Ended, vlc.State.Stopped, vlc.State.Error):
+            self.play_index((self.current_index + 1) % len(self.playlist))
+
+    def stop(self):
+        if self.player is None:
+            return
+        try:
+            self.player.stop()
+        except Exception:
+            pass
+
+
 class GameLogger:
     def __init__(self):
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -935,17 +1105,27 @@ class VersusGame:
         self.root = root
 
         self.profile = load_profile()
+        self.audio_settings = load_audio_settings()
         self._ensure_player_name()
         self.player_name = str(self.profile.get("player_name", "Oyuncu"))
         self.match_recorded = False
 
         self.root.title(f"Sayisal Tetris V3 - {self.player_name} vs Robot AI")
-        self.root.geometry(f"{WIN_W}x{WIN_H}")
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        start_w = min(max(WIN_W, 1180), max(900, screen_w - 48))
+        start_h = min(max(WIN_H, 860), max(700, screen_h - 96))
+        self.root.geometry(f"{start_w}x{start_h}")
         self.root.resizable(True, True)
         self.root.minsize(WIN_W, WIN_H)
 
         self.wait_mode_var = tk.BooleanVar(value=False)
         self.feed_filter_var = tk.StringVar(value="all")
+        mode = str(self.audio_settings.get("sound_mode", SOUND_MODE_WARNING_ONLY))
+        if mode not in SOUND_MODE_LABELS:
+            mode = SOUND_MODE_WARNING_ONLY
+        self.sound_mode_var = tk.StringVar(value=mode)
+        self.fullscreen_var = tk.BooleanVar(value=False)
         self._build_menu()
 
         self.canvas = tk.Canvas(root, width=WIN_W, height=WIN_H, bg="#0b1220", highlightthickness=0)
@@ -973,6 +1153,7 @@ class VersusGame:
         self.robot_meta = None
 
         self.logger = GameLogger()
+        self.music = SidMusicManager()
 
         self.flash_player = []
         self.flash_robot = []
@@ -1010,8 +1191,10 @@ class VersusGame:
         self.root.bind("<q>", self.on_quit)
         self.root.bind("<Q>", self.on_quit)
         self.root.bind("<Escape>", self.on_quit)
+        self.root.bind("<F11>", self.on_toggle_fullscreen)
 
         self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.", "system")
+        self.apply_sound_mode(push_message=False)
         self.prepare_robot_move()
         self.tick()
 
@@ -1030,6 +1213,20 @@ class VersusGame:
         menu_filter.add_radiobutton(label="Sadece Reddedilen", variable=self.feed_filter_var, value="rejected", command=self.set_feed_filter)
         menu_filter.add_radiobutton(label="Sadece Uygulanan", variable=self.feed_filter_var, value="applied", command=self.set_feed_filter)
         menu_features.add_cascade(label="Akil Yurutme Filtresi", menu=menu_filter)
+        menu_sound = tk.Menu(menu_features, tearoff=0)
+        for mode_key, mode_label in SOUND_MODE_LABELS.items():
+            menu_sound.add_radiobutton(
+                label=mode_label,
+                variable=self.sound_mode_var,
+                value=mode_key,
+                command=self.apply_sound_mode,
+            )
+        menu_features.add_cascade(label="Ses Modu", menu=menu_sound)
+        menu_features.add_checkbutton(
+            label="Tam Ekran (F11)",
+            variable=self.fullscreen_var,
+            command=self.toggle_fullscreen,
+        )
         menu_features.add_command(label="Simdi Log Analizi", command=self.manual_idle_analysis)
         menu_features.add_command(label="Yeniden Baslat (R)", command=self.restart_match)
         menu_features.add_separator()
@@ -1098,6 +1295,40 @@ class VersusGame:
     def on_toggle_wait_mode(self, _event=None):
         self.wait_mode_var.set(not self.wait_mode_var.get())
         self.toggle_wait_mode()
+
+    def toggle_fullscreen(self):
+        enabled = bool(self.fullscreen_var.get())
+        self.root.attributes("-fullscreen", enabled)
+        self.status = f"Tam ekran: {'ACIK' if enabled else 'KAPALI'}"
+
+    def on_toggle_fullscreen(self, _event=None):
+        self.fullscreen_var.set(not self.fullscreen_var.get())
+        self.toggle_fullscreen()
+
+    def _effects_enabled(self):
+        mode = self.sound_mode_var.get()
+        return mode in (SOUND_MODE_NO_MUSIC, SOUND_MODE_WARNING_ONLY, SOUND_MODE_FULL)
+
+    def _music_enabled(self):
+        mode = self.sound_mode_var.get()
+        return mode in (SOUND_MODE_NO_EFFECTS, SOUND_MODE_FULL)
+
+    def apply_sound_mode(self, push_message=True):
+        mode = self.sound_mode_var.get()
+        self.audio_settings["sound_mode"] = mode
+        save_audio_settings(self.audio_settings)
+
+        if self._music_enabled():
+            started = self.music.start()
+            if push_message:
+                self.push_reason(
+                    f"Ses modu: {SOUND_MODE_LABELS.get(mode, mode)} | SID muzik {'acildi' if started else 'baslatilamadi'}",
+                    "system",
+                )
+        else:
+            self.music.stop()
+            if push_message:
+                self.push_reason(f"Ses modu: {SOUND_MODE_LABELS.get(mode, mode)} | SID muzik kapali", "system")
 
     def manual_idle_analysis(self):
         trained, reward, robot_replays, human_replays = self.robot_ai.analyze_previous_logs()
@@ -1172,6 +1403,8 @@ class VersusGame:
 
     def on_quit(self, _event=None):
         self.robot_ai.save_memory()
+        save_audio_settings(self.audio_settings)
+        self.music.stop()
         save_profile(self.profile)
         self.root.destroy()
 
@@ -1278,28 +1511,57 @@ class VersusGame:
             "combo_mult": mult,
         }
 
+    def _build_fx_wave(self, side, intensity):
+        sample_rate = 22050
+        duration = 0.18 if intensity >= 2 else 0.12
+        total_samples = int(sample_rate * duration)
+        start_freq = 780 if side == "player" else 430
+        end_freq = 1240 if side == "player" else 300
+        volume = 0.45 if intensity >= 2 else 0.32
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            for i in range(total_samples):
+                t = i / sample_rate
+                blend = i / max(1, total_samples - 1)
+                freq = start_freq + (end_freq - start_freq) * blend
+                env = max(0.0, 1.0 - blend * 1.2)
+                tone = math.sin(2.0 * math.pi * freq * t)
+                sample = int(32767 * volume * env * tone)
+                wf.writeframesraw(struct.pack("<h", sample))
+        return buffer.getvalue()
+
     def _play_explosion_sound(self, side, intensity):
-        if winsound is None:
+        if winsound is None or not self._effects_enabled():
             return
+
+        mode = self.sound_mode_var.get()
 
         def _beep_pattern():
             try:
-                if side == "player":
-                    if intensity >= 2:
-                        winsound.Beep(520, 55)
-                        winsound.Beep(690, 75)
-                        winsound.Beep(820, 95)
-                    else:
-                        winsound.Beep(630, 45)
-                        winsound.Beep(760, 55)
+                if mode == SOUND_MODE_FULL:
+                    blob = self._build_fx_wave(side, intensity)
+                    winsound.PlaySound(blob, winsound.SND_MEMORY)
                 else:
-                    if intensity >= 2:
-                        winsound.Beep(260, 65)
-                        winsound.Beep(330, 80)
-                        winsound.Beep(410, 100)
+                    if side == "player":
+                        if intensity >= 2:
+                            winsound.Beep(520, 55)
+                            winsound.Beep(690, 75)
+                            winsound.Beep(820, 95)
+                        else:
+                            winsound.Beep(630, 45)
+                            winsound.Beep(760, 55)
                     else:
-                        winsound.Beep(320, 50)
-                        winsound.Beep(380, 60)
+                        if intensity >= 2:
+                            winsound.Beep(260, 65)
+                            winsound.Beep(330, 80)
+                            winsound.Beep(410, 100)
+                        else:
+                            winsound.Beep(320, 50)
+                            winsound.Beep(380, 60)
             except Exception:
                 pass
 
@@ -1307,6 +1569,8 @@ class VersusGame:
 
     def _trigger_explosion_feedback(self, side, explosion_count, cleared_cells):
         if explosion_count <= 0 and cleared_cells <= 0:
+            return
+        if not self._effects_enabled():
             return
 
         big_blast = explosion_count >= 3 or cleared_cells >= 8
@@ -1650,42 +1914,42 @@ class VersusGame:
             flash_style="robot",
         )
 
-        # Orta panel: kontroller + tur/seviye + anlik sayi kutulari
+        # Orta panel: tur/seviye + anlik sayi kutulari
         mid_x1 = LEFT_X + BOARD_W + 16
         mid_x2 = right_x - 16
         if mid_x2 - mid_x1 < 170:
             mid_x2 = mid_x1 + 170
         mid_y1 = TOP_Y
-        mid_y2 = TOP_Y + 265
+        mid_y2 = TOP_Y + 230
         mid_cx = (mid_x1 + mid_x2) // 2
 
         self.canvas.create_rectangle(mid_x1, mid_y1, mid_x2, mid_y2, outline="#475569", width=2, fill="#111827")
-        self.canvas.create_text(mid_cx, mid_y1 + 14, text="Kontroller", fill="#e2e8f0", font=("Segoe UI", 11, "bold"))
-        self.canvas.create_text(mid_cx, mid_y1 + 36, text="A/D: Kaydir  |  S: Hizli  |  Space: Normal", fill="#cbd5e1", font=("Segoe UI", 9))
-        self.canvas.create_text(mid_cx, mid_y1 + 54, text="B: Bekleme Modu  |  R: Yeni Mac  |  Q/Esc: Cikis", fill="#cbd5e1", font=("Segoe UI", 9))
+        self.canvas.create_text(mid_cx, mid_y1 + 18, text=f"Tur: {self.turn}   Seviye: {self.level}", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
+        self.canvas.create_text(mid_cx, mid_y1 + 40, text=f"{self.player_name}: {self.player_score}   |   Robot: {self.robot_score}", fill="#e5e7eb", font=("Segoe UI", 10, "bold"))
 
-        self.canvas.create_text(mid_cx, mid_y1 + 84, text=f"Tur: {self.turn}   Seviye: {self.level}", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
-        self.canvas.create_text(mid_cx, mid_y1 + 106, text=f"{self.player_name}: {self.player_score}   |   Robot: {self.robot_score}", fill="#e5e7eb", font=("Segoe UI", 10, "bold"))
-
-        self.canvas.create_text(mid_x1 + 20, mid_y1 + 132, anchor="nw", text="Gelen", fill="#cbd5e1", font=("Segoe UI", 10, "bold"))
+        self.canvas.create_text(mid_x1 + 20, mid_y1 + 68, anchor="nw", text="Gelen", fill="#cbd5e1", font=("Segoe UI", 10, "bold"))
         cfill, clabel = color_for(self.current_num)
-        self.canvas.create_rectangle(mid_x1 + 14, mid_y1 + 150, mid_x1 + 14 + CELL * 2, mid_y1 + 150 + CELL * 2, fill=cfill, outline="#334155", width=2)
+        self.canvas.create_rectangle(mid_x1 + 14, mid_y1 + 86, mid_x1 + 14 + CELL * 2, mid_y1 + 86 + CELL * 2, fill=cfill, outline="#334155", width=2)
         if clabel:
-            self.canvas.create_text(mid_x1 + 14 + CELL, mid_y1 + 150 + CELL, text=clabel, fill="#f8fafc", font=("Segoe UI", 14, "bold"))
+            self.canvas.create_text(mid_x1 + 14 + CELL, mid_y1 + 86 + CELL, text=clabel, fill="#f8fafc", font=("Segoe UI", 14, "bold"))
 
-        self.canvas.create_text(mid_x2 - 20 - CELL * 2, mid_y1 + 132, anchor="nw", text="Sonraki", fill="#cbd5e1", font=("Segoe UI", 10, "bold"))
+        self.canvas.create_text(mid_x2 - 20 - CELL * 2, mid_y1 + 68, anchor="nw", text="Sonraki", fill="#cbd5e1", font=("Segoe UI", 10, "bold"))
         nfill, nlabel = color_for(self.next_num)
-        self.canvas.create_rectangle(mid_x2 - 14 - CELL * 2, mid_y1 + 150, mid_x2 - 14, mid_y1 + 150 + CELL * 2, fill=nfill, outline="#334155", width=2)
+        self.canvas.create_rectangle(mid_x2 - 14 - CELL * 2, mid_y1 + 86, mid_x2 - 14, mid_y1 + 86 + CELL * 2, fill=nfill, outline="#334155", width=2)
         if nlabel:
-            self.canvas.create_text(mid_x2 - 14 - CELL, mid_y1 + 150 + CELL, text=nlabel, fill="#f8fafc", font=("Segoe UI", 14, "bold"))
+            self.canvas.create_text(mid_x2 - 14 - CELL, mid_y1 + 86 + CELL, text=nlabel, fill="#f8fafc", font=("Segoe UI", 14, "bold"))
 
-        self.canvas.create_text(mid_cx, mid_y1 + 230, text=f"Durum: {self.status}", fill="#93c5fd", font=("Segoe UI", 9, "bold"), width=max(130, mid_x2 - mid_x1 - 16))
+        self.canvas.create_text(mid_cx, mid_y1 + 170, text=f"Durum: {self.status}", fill="#93c5fd", font=("Segoe UI", 9, "bold"), width=max(130, mid_x2 - mid_x1 - 16))
 
         nx = panel_x
         ny = TOP_Y
 
         lines = [
             "Profil ve Robot Durumu",
+            "",
+            "Kontroller",
+            "A/D: Kaydir  |  S: Hizli  |  Space: Normal",
+            "B: Bekleme Modu  |  R: Yeni Mac  |  Q/Esc: Cikis",
             "",
             f"Oyuncu: {self.player_name}",
             f"Toplam mac: {int(self.profile.get('total_matches', 0))}",
@@ -1709,18 +1973,19 @@ class VersusGame:
             f"Log dosyasi: {os.path.basename(self.logger.path)}",
         ]
 
-        y = ny + 230
+        y = ny + 14
+        row_step = 20 if win_h >= 940 else 18
         for i, line in enumerate(lines):
             self.canvas.create_text(
                 nx,
-                y + i * 22,
+                y + i * row_step,
                 anchor="nw",
                 text=line,
                 fill="#cbd5e1" if i != 0 else "#e2e8f0",
                 font=("Segoe UI", 11 if i != 0 else 12, "bold" if i == 0 else "normal"),
             )
 
-        info_bottom = y + len(lines) * 22
+        info_bottom = y + len(lines) * row_step
 
         if self.game_over:
             bx1 = LEFT_X + 80
@@ -1752,7 +2017,7 @@ class VersusGame:
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 162, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
 
         feed_x1 = LEFT_X + 140
-        feed_y1 = max(TOP_Y + BOARD_H - 78, info_bottom + 8)
+        feed_y1 = max(TOP_Y + BOARD_H - 120, info_bottom + 8)
         feed_x2 = min(win_w - 28, panel_x - 70)
         if feed_x2 - feed_x1 < 240:
             feed_x2 = feed_x1 + 240
@@ -1853,6 +2118,8 @@ class VersusGame:
 
     def tick(self):
         self._idle_analyze_if_needed()
+        if self._music_enabled():
+            self.music.update()
         if self.game_over and not self.match_recorded:
             self._record_match_result()
         self.draw()
