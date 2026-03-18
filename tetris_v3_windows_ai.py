@@ -1251,32 +1251,34 @@ class VersusGame:
 
         self.flash_until = time.time() + 0.24
 
-        # Yeni kural 1: Ekranin en ustune ilk ulasan kaybeder.
-        player_top = board_touches_top(self.player_board)
-        robot_top = board_touches_top(self.robot_board)
-        if player_top and not robot_top:
-            self.game_over = True
-            self.status = "Oyun bitti: Insan ust satira ulasti ve kaybetti"
-        elif robot_top and not player_top:
-            self.game_over = True
-            self.status = "Oyun bitti: Robot ust satira ulasti ve kaybetti"
-        elif player_top and robot_top:
-            self.game_over = True
-            self.status = "Oyun bitti: Iki taraf da ust satira ulasti (berabere)"
+        # Oyun dengesi icin ilk 10 hamlede oyun sonu kontrolu kapali.
+        if self.turn > 10:
+            # Yeni kural 1: Ekranin en ustune ilk ulasan kaybeder.
+            player_top = board_touches_top(self.player_board)
+            robot_top = board_touches_top(self.robot_board)
+            if player_top and not robot_top:
+                self.game_over = True
+                self.status = "Oyun bitti: Insan ust satira ulasti ve kaybetti"
+            elif robot_top and not player_top:
+                self.game_over = True
+                self.status = "Oyun bitti: Robot ust satira ulasti ve kaybetti"
+            elif player_top and robot_top:
+                self.game_over = True
+                self.status = "Oyun bitti: Iki taraf da ust satira ulasti (berabere)"
 
-        # Yeni kural 2: Ekranda 1 veya 0 tas kalan kazanir.
-        player_pieces = piece_count(self.player_board)
-        robot_pieces = piece_count(self.robot_board)
-        if not self.game_over:
-            if player_pieces <= 1 and robot_pieces > 1:
-                self.game_over = True
-                self.status = "Oyun bitti: Insan tahtada 1/0 tasla kazandi"
-            elif robot_pieces <= 1 and player_pieces > 1:
-                self.game_over = True
-                self.status = "Oyun bitti: Robot tahtada 1/0 tasla kazandi"
-            elif player_pieces <= 1 and robot_pieces <= 1:
-                self.game_over = True
-                self.status = "Oyun bitti: Iki taraf da 1/0 tasa indi (berabere)"
+            # Yeni kural 2: Ekranda 1 veya 0 tas kalan kazanir.
+            player_pieces = piece_count(self.player_board)
+            robot_pieces = piece_count(self.robot_board)
+            if not self.game_over:
+                if player_pieces <= 1 and robot_pieces > 1:
+                    self.game_over = True
+                    self.status = "Oyun bitti: Insan tahtada 1/0 tasla kazandi"
+                elif robot_pieces <= 1 and player_pieces > 1:
+                    self.game_over = True
+                    self.status = "Oyun bitti: Robot tahtada 1/0 tasla kazandi"
+                elif player_pieces <= 1 and robot_pieces <= 1:
+                    self.game_over = True
+                    self.status = "Oyun bitti: Iki taraf da 1/0 tasa indi (berabere)"
 
         self.turn += 1
         self.current_num = self.next_num
