@@ -3,12 +3,18 @@ import math
 import os
 import random
 import sys
+import threading
 import time
 import tkinter as tk
 from tkinter import messagebox
 import uuid
 from collections import deque
 from datetime import datetime
+
+try:
+    import winsound
+except Exception:
+    winsound = None
 
 ROWS, COLS = 18, 8
 EMPTY = None
@@ -34,6 +40,9 @@ MIN_FALL_DELAY = 0.12
 IDLE_ANALYZE_SECONDS = 5.0
 MAX_TURNS = 250
 MAX_SHIFT_ACTIONS = int(COLS * 2.5)
+EARLY_LEARNING_TURNS = 80
+EARLY_EPSILON = 0.22
+EARLY_TOP_CHOICES = 2
 
 if getattr(sys, "frozen", False):
     ROOT_DIR = os.path.dirname(sys.executable)
@@ -699,9 +708,15 @@ class RobotLearner:
                 "decision": "fallback",
             }
 
-        if random.random() < self.epsilon:
-            chosen = random.choice(candidates)
-            reason = "Kesif modu: yeni hamle denemesi"
+        effective_epsilon = self.epsilon
+        if self.decision_count <= EARLY_LEARNING_TURNS:
+            effective_epsilon = max(self.epsilon, EARLY_EPSILON)
+
+        if random.random() < effective_epsilon:
+            top_count = min(EARLY_TOP_CHOICES, len(candidates))
+            top_candidates = sorted(candidates, key=lambda t: t[4], reverse=True)[:top_count]
+            chosen = random.choice(top_candidates)
+            reason = f"Kesif modu: ilk {top_count} iyi secenek arasindan deneme"
         else:
             chosen = max(candidates, key=lambda t: t[4])
             reason = "Ogrenme modeli + strateji puanina gore secim"
@@ -857,6 +872,8 @@ class VersusGame:
         self.flash_player = []
         self.flash_robot = []
         self.flash_until = 0.0
+        self.impact_flash_until = 0.0
+        self.impact_flash_color = "#fef08a"
 
         self.phase = "player_input"
         self.game_over = False
@@ -1008,6 +1025,8 @@ class VersusGame:
         self.flash_player = []
         self.flash_robot = []
         self.flash_until = 0.0
+        self.impact_flash_until = 0.0
+        self.impact_flash_color = "#fef08a"
 
         self.phase = "player_input"
         self.game_over = False
@@ -1077,6 +1096,33 @@ class VersusGame:
             "cleared": total_cleared,
             "combo_mult": mult,
         }
+
+    def _play_explosion_sound(self, intensity):
+        if winsound is None:
+            return
+
+        def _beep_pattern():
+            try:
+                if intensity >= 2:
+                    winsound.Beep(280, 65)
+                    winsound.Beep(360, 75)
+                    winsound.Beep(460, 95)
+                else:
+                    winsound.Beep(420, 45)
+                    winsound.Beep(520, 55)
+            except Exception:
+                pass
+
+        threading.Thread(target=_beep_pattern, daemon=True).start()
+
+    def _trigger_explosion_feedback(self, explosion_count, cleared_cells):
+        if explosion_count <= 0 and cleared_cells <= 0:
+            return
+
+        big_blast = explosion_count >= 3 or cleared_cells >= 8
+        self.impact_flash_color = "#fb7185" if big_blast else "#fef08a"
+        self.impact_flash_until = time.time() + (0.32 if big_blast else 0.2)
+        self._play_explosion_sound(2 if big_blast else 1)
 
     def _apply_piece(self, board, num, col, fast, level, visual_events):
         row = self._drop_number(board, num, col, fast)
@@ -1206,6 +1252,10 @@ class VersusGame:
 
         self.player_score += player_result["points"]
         self.robot_score += robot_result["points"]
+
+        total_explosions = player_result["explosions"] + robot_result["explosions"]
+        total_cleared = player_result["exploded_cells"] + robot_result["exploded_cells"]
+        self._trigger_explosion_feedback(total_explosions, total_cleared)
 
         self.level = max(1, max(self.player_score, self.robot_score) // 60 + 1)
 
@@ -1346,6 +1396,7 @@ class VersusGame:
 
         flash_set = set(flash_cells or [])
         flashing = time.time() < self.flash_until
+        pulse = int(time.time() * 28) % 2
 
         for r in range(ROWS):
             for c in range(COLS):
@@ -1362,7 +1413,7 @@ class VersusGame:
                     label = alabel
 
                 if flashing and (r, c) in flash_set:
-                    fill = "#f8fafc"
+                    fill = "#f8fafc" if pulse == 0 else "#fef08a"
 
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline="#0b1220", width=1)
                 if label:
@@ -1498,12 +1549,25 @@ class VersusGame:
         features_bottom = fy + 22 + len(features) * 18
         feed_x1 = BOARD_PADDING
         feed_y1 = max(TOP_Y + BOARD_H + 10, features_bottom + 16)
-        feed_x2 = win_w - 20
+        feed_x2 = min(win_w - 20, panel_x - 24)
+        if feed_x2 - feed_x1 < 280:
+            feed_x2 = feed_x1 + 280
         feed_y2 = win_h - 20
         if feed_y2 - feed_y1 < 90:
             feed_y1 = feed_y2 - 90
         self.canvas.create_rectangle(feed_x1, feed_y1, feed_x2, feed_y2, outline="#475569", width=2, fill="#0f172a")
         self.canvas.create_text(feed_x1 + 10, feed_y1 + 8, anchor="nw", text="Robot Akil Yurutme Akisi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
+
+        if time.time() < self.impact_flash_until:
+            self.canvas.create_rectangle(
+                LEFT_X,
+                TOP_Y,
+                right_x + BOARD_W,
+                TOP_Y + BOARD_H,
+                fill=self.impact_flash_color,
+                stipple="gray50",
+                outline="",
+            )
 
         filtered_feed = self.get_filtered_reason_feed()
         for i, item in enumerate(filtered_feed[-8:]):
@@ -1515,6 +1579,7 @@ class VersusGame:
                 text=line,
                 fill="#93c5fd",
                 font=("Consolas", 10),
+                width=max(120, feed_x2 - feed_x1 - 20),
             )
 
     def _idle_analyze_if_needed(self):
