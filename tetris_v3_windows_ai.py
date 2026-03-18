@@ -821,7 +821,8 @@ class VersusGame:
         self.root = root
         self.root.title("Sayisal Tetris V3 - Human vs Robot AI")
         self.root.geometry(f"{WIN_W}x{WIN_H}")
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
+        self.root.minsize(WIN_W, WIN_H)
 
         self.wait_mode_var = tk.BooleanVar(value=False)
         self.feed_filter_var = tk.StringVar(value="all")
@@ -878,6 +879,8 @@ class VersusGame:
         self.root.bind("<Return>", self.on_drop_normal)
         self.root.bind("<b>", self.on_toggle_wait_mode)
         self.root.bind("<B>", self.on_toggle_wait_mode)
+        self.root.bind("<r>", self.restart_match)
+        self.root.bind("<R>", self.restart_match)
         self.root.bind("<q>", self.on_quit)
         self.root.bind("<Q>", self.on_quit)
         self.root.bind("<Escape>", self.on_quit)
@@ -902,6 +905,7 @@ class VersusGame:
         menu_filter.add_radiobutton(label="Sadece Uygulanan", variable=self.feed_filter_var, value="applied", command=self.set_feed_filter)
         menu_features.add_cascade(label="Akil Yurutme Filtresi", menu=menu_filter)
         menu_features.add_command(label="Simdi Log Analizi", command=self.manual_idle_analysis)
+        menu_features.add_command(label="Yeniden Baslat (R)", command=self.restart_match)
         menu_features.add_separator()
         menu_features.add_command(label="Cikis", command=self.on_quit)
         menubar.add_cascade(label="Ozellikler", menu=menu_features)
@@ -977,6 +981,44 @@ class VersusGame:
     def on_quit(self, _event=None):
         self.robot_ai.save_memory()
         self.root.destroy()
+
+    def restart_match(self, _event=None):
+        # Yeni mac baslatilirken robotun ogrenme belleigi korunur.
+        self.player_board = [[EMPTY for _ in range(COLS)] for _ in range(ROWS)]
+        self.robot_board = [[EMPTY for _ in range(COLS)] for _ in range(ROWS)]
+
+        self.player_score = 0
+        self.robot_score = 0
+        self.turn = 1
+        self.level = 1
+
+        self.current_num = spawn_value(self.level)
+        self.next_num = spawn_value(self.level)
+
+        self.player_col = COLS // 2
+        self.player_fast = False
+        self.player_shift_actions = 0
+
+        self.robot_col = COLS // 2
+        self.robot_fast = True
+        self.robot_meta = None
+
+        self.logger = GameLogger()
+
+        self.flash_player = []
+        self.flash_robot = []
+        self.flash_until = 0.0
+
+        self.phase = "player_input"
+        self.game_over = False
+        self.last_input_time = time.time()
+        self.last_idle_analysis = 0.0
+        self.status = "Yeni mac basladi: insan hamlesini bekliyor"
+        self.reason_feed.clear()
+        self.last_proposal_banner = "Henüz öneri yok"
+
+        self.push_reason("Yeni mac baslatildi. Robot belleigi korunarak oyun sifirlandi.", "system")
+        self.prepare_robot_move()
 
     def _can_place(self, board, col):
         return first_empty_from_bottom(board, col) is not None
@@ -1329,6 +1371,13 @@ class VersusGame:
     def draw(self):
         self.canvas.delete("all")
 
+        # Pencere buyudukce sag panel ve alt akis alani da genisler.
+        win_w = max(WIN_W, self.canvas.winfo_width())
+        win_h = max(WIN_H, self.canvas.winfo_height())
+        extra_w = max(0, win_w - WIN_W)
+        right_x = RIGHT_X + (extra_w // 2)
+        panel_x = PANEL_X + extra_w
+
         self.canvas.create_text(BOARD_PADDING, 10, anchor="nw", text="Sayisal Tetris V3 - Human vs Robot (Windows)", fill="#f8fafc", font=("Segoe UI", 16, "bold"))
 
         self._draw_board(
@@ -1343,7 +1392,7 @@ class VersusGame:
 
         self._draw_board(
             self.robot_board,
-            RIGHT_X,
+            right_x,
             TOP_Y,
             "Robot",
             active_col=self.robot_col if self.phase == "player_input" and not self.game_over else None,
@@ -1351,7 +1400,7 @@ class VersusGame:
             flash_cells=self.flash_robot,
         )
 
-        nx = PANEL_X
+        nx = panel_x
         ny = TOP_Y
 
         self.canvas.create_text(nx, ny, anchor="nw", text=f"Tur: {self.turn}", fill="#cbd5e1", font=("Segoe UI", 13, "bold"))
@@ -1379,6 +1428,7 @@ class VersusGame:
             "Space/Enter  : Yavas birak",
             "S / Asagi Ok : Hizli birak",
             "B            : Bekleme modu ac/kapat",
+            "R            : Yeni mac baslat",
             "Q / Esc      : Cikis",
             "",
             f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
@@ -1407,7 +1457,7 @@ class VersusGame:
         if self.game_over:
             bx1 = LEFT_X + 80
             by1 = TOP_Y + 210
-            bx2 = RIGHT_X + BOARD_W - 80
+            bx2 = right_x + BOARD_W - 80
             by2 = by1 + 140
             self.canvas.create_rectangle(bx1, by1, bx2, by2, fill="#111827", outline="#f87171", width=2)
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 38, text="GAME OVER", fill="#fca5a5", font=("Segoe UI", 24, "bold"))
@@ -1419,6 +1469,7 @@ class VersusGame:
                 font=("Segoe UI", 13, "bold"),
             )
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 108, text=self.status, fill="#cbd5e1", font=("Segoe UI", 11))
+            self.canvas.create_text((bx1 + bx2) // 2, by1 + 126, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
 
         features = [
             ("Ozellik Menusu", True),
@@ -1430,7 +1481,7 @@ class VersusGame:
             ("5s Bosluk Analizi", True),
             ("Akil Yurutme Akisi", True),
         ]
-        fx = PANEL_X
+        fx = panel_x
         fy = TOP_Y + 520
         self.canvas.create_text(fx, fy, anchor="nw", text="Planlanan Ozellik Kontrolu", fill="#e2e8f0", font=("Segoe UI", 11, "bold"))
         for i, (name, ok) in enumerate(features):
@@ -1444,10 +1495,13 @@ class VersusGame:
                 font=("Segoe UI", 10),
             )
 
+        features_bottom = fy + 22 + len(features) * 18
         feed_x1 = BOARD_PADDING
-        feed_y1 = TOP_Y + BOARD_H + 10
-        feed_x2 = WIN_W - 20
-        feed_y2 = WIN_H - 20
+        feed_y1 = max(TOP_Y + BOARD_H + 10, features_bottom + 16)
+        feed_x2 = win_w - 20
+        feed_y2 = win_h - 20
+        if feed_y2 - feed_y1 < 90:
+            feed_y1 = feed_y2 - 90
         self.canvas.create_rectangle(feed_x1, feed_y1, feed_x2, feed_y2, outline="#475569", width=2, fill="#0f172a")
         self.canvas.create_text(feed_x1 + 10, feed_y1 + 8, anchor="nw", text="Robot Akil Yurutme Akisi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
 
