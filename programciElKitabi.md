@@ -258,3 +258,11 @@ Onerilen yontem:
 
 Beklenen sonuc:
 - Hata ayiklama (debugging) ve karsilastirma testlerinde yuksek guvenilirlik.
+
+## 12. Telif ve Not
+Zuhtu Mete DINLER
+@2026
+Tum Haklari Saklidir.
+zmetedinler@gmail.com
+
+VAO dan ogrendiklerim, kendi bildigim, biraz eski oyunlar, birazda arastirma, ve gpt codex 5.3 yardimiyla yazildi.

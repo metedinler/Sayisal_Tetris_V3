@@ -2,6 +2,7 @@ import json
 import math
 import os
 import random
+import sys
 import time
 import tkinter as tk
 from tkinter import messagebox
@@ -34,7 +35,10 @@ IDLE_ANALYZE_SECONDS = 5.0
 MAX_TURNS = 250
 MAX_SHIFT_ACTIONS = int(COLS * 2.5)
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    ROOT_DIR = os.path.dirname(sys.executable)
+else:
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT_DIR, "logs")
 MEMORY_DIR = os.path.join(ROOT_DIR, "ai_memory")
 MODEL_PATH = os.path.join(MEMORY_DIR, "robot_brain.json")
@@ -916,7 +920,13 @@ class VersusGame:
             "- 10 aktif robot stratejisi\n"
             "- 5 öneri motoru\n"
             "- Kalıcı öğrenme belleği\n"
-            "- Benzersiz log kaydı ve bekleme analiz modu",
+            "- Benzersiz log kaydı ve bekleme analiz modu\n\n"
+            "Zuhtu Mete DINLER\n"
+            "@2026\n"
+            "Tum Haklari Saklidir.\n"
+            "zmetedinler@gmail.com\n\n"
+            "VAO dan ogrendiklerim, kendi bildigim, biraz eski oyunlar,\n"
+            "birazda arastirma, ve gpt codex 5.3 yardimiyla yazildi",
         )
 
     def push_reason(self, text, reason_type="general"):
