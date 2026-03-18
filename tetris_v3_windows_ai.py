@@ -4,7 +4,9 @@ import os
 import random
 import time
 import tkinter as tk
+from tkinter import messagebox
 import uuid
+from collections import deque
 from datetime import datetime
 
 ROWS, COLS = 18, 8
@@ -23,7 +25,8 @@ RIGHT_X = LEFT_X + BOARD_W + GAP_BETWEEN_BOARDS
 PANEL_X = RIGHT_X + BOARD_W + 30
 
 WIN_W = PANEL_X + PANEL_WIDTH
-WIN_H = TOP_Y + BOARD_H + 30
+REASON_FEED_HEIGHT = 210
+WIN_H = TOP_Y + BOARD_H + REASON_FEED_HEIGHT + 40
 
 BASE_FALL_DELAY = 0.55
 MIN_FALL_DELAY = 0.12
@@ -446,11 +449,28 @@ class StrategyGenerator:
             {"name": "safe_stack", "w": [0.15, 0.10, 0.05, 0.30, -0.25, 0.10]},
             {"name": "max_potential", "w": [0.10, 0.35, 0.30, 0.10, -0.10, 0.05]},
             {"name": "balance", "w": [0.20, 0.20, 0.15, 0.20, -0.20, 0.05]},
+            {"name": "combo_hunter", "w": [0.08, 0.30, 0.35, 0.05, -0.10, 0.06]},
+            {"name": "low_risk", "w": [0.25, 0.08, 0.08, 0.28, -0.35, 0.02]},
+            {"name": "center_control", "w": [0.22, 0.12, 0.10, 0.22, -0.18, 0.04]},
+            {"name": "edge_pressure", "w": [0.12, 0.22, 0.18, 0.16, -0.16, 0.09]},
+            {"name": "lock_builder", "w": [0.10, 0.15, 0.42, 0.08, -0.12, 0.03]},
+            {"name": "sum9_focus", "w": [0.10, 0.44, 0.14, 0.10, -0.10, 0.03]},
+            {"name": "survival_mix", "w": [0.28, 0.10, 0.08, 0.25, -0.30, 0.01]},
         ]
         self.scores = {s["name"]: 1.0 for s in self.pool}
+        self.proposal_engines = [
+            {"name": "mutate_light", "jitter": 0.05, "focus": [0.9, 1.1, 1.0, 1.0, 1.0, 1.0]},
+            {"name": "mutate_aggressive", "jitter": 0.12, "focus": [0.8, 1.3, 1.25, 0.9, 0.8, 1.0]},
+            {"name": "risk_balancer", "jitter": 0.07, "focus": [1.2, 0.9, 0.95, 1.15, 1.35, 0.8]},
+            {"name": "combo_amplifier", "jitter": 0.09, "focus": [0.9, 1.25, 1.35, 0.85, 0.9, 1.05]},
+            {"name": "stability_guard", "jitter": 0.04, "focus": [1.25, 0.85, 0.90, 1.20, 1.40, 0.6]},
+        ]
 
     def active_count(self):
         return len(self.pool)
+
+    def proposal_engine_count(self):
+        return len(self.proposal_engines)
 
     def _score_with_strategy(self, features, strategy):
         w = strategy["w"]
@@ -464,14 +484,17 @@ class StrategyGenerator:
             + w[5] * features[5]
         )
 
-    def suggest(self, board, num, next_num, level):
+    def suggest(self, board, num, next_num, level, turn_index=0):
         if level < 10:
             return None
 
         base = max(self.pool, key=lambda s: self.scores.get(s["name"], 0.0))
+        engine = self.proposal_engines[turn_index % len(self.proposal_engines)]
         new_w = []
-        for val in base["w"]:
-            new_w.append(val + random.uniform(-0.08, 0.08))
+        for idx, val in enumerate(base["w"]):
+            jitter = random.uniform(-engine["jitter"], engine["jitter"])
+            focused = (val + jitter) * engine["focus"][idx]
+            new_w.append(focused)
 
         name = "gen_" + uuid.uuid4().hex[:6]
         candidate = {"name": name, "w": new_w}
@@ -495,7 +518,7 @@ class StrategyGenerator:
             if sc > best_score:
                 best_score = sc
                 best_col = col
-                best_reason = "Yeni strateji, patlama potansiyeli ve risk dengesini yuksek buldu"
+                best_reason = f"{engine['name']} motoru, patlama potansiyeli ve risk dengesini yuksek buldu"
 
         if best_col is None:
             return None
@@ -507,6 +530,7 @@ class StrategyGenerator:
             "confidence": confidence,
             "reason": best_reason,
             "next_num_known": next_num,
+            "engine_name": engine["name"],
         }
 
     def decide_apply(self, proposal, base_score, proposal_score, risk_value):
@@ -524,12 +548,14 @@ class StrategyGenerator:
     def maybe_add_strategy(self, candidate):
         if candidate is None:
             return False
+        if len(self.pool) >= 30:
+            return False
         self.pool.append(candidate)
         self.scores[candidate["name"]] = 1.0
         return True
 
     def to_dict(self):
-        return {"pool": self.pool, "scores": self.scores}
+        return {"pool": self.pool, "scores": self.scores, "proposal_engines": self.proposal_engines}
 
     @classmethod
     def from_dict(cls, data):
@@ -538,6 +564,7 @@ class StrategyGenerator:
             return obj
         obj.pool = data.get("pool", obj.pool)
         obj.scores = data.get("scores", obj.scores)
+        obj.proposal_engines = data.get("proposal_engines", obj.proposal_engines)
         return obj
 
 
@@ -549,6 +576,7 @@ class RobotLearner:
         self.total_updates = 0
         self.last_train_error = 0.0
         self.last_reason = ""
+        self.decision_count = 0
 
         self._load_memory()
 
@@ -562,6 +590,7 @@ class RobotLearner:
             self.strategy_engine = StrategyGenerator.from_dict(data.get("strategy_engine", {}))
             self.epsilon = data.get("epsilon", self.epsilon)
             self.total_updates = data.get("total_updates", 0)
+            self.decision_count = data.get("decision_count", 0)
         except Exception:
             pass
 
@@ -571,6 +600,7 @@ class RobotLearner:
             "strategy_engine": self.strategy_engine.to_dict(),
             "epsilon": self.epsilon,
             "total_updates": self.total_updates,
+            "decision_count": self.decision_count,
             "updated_at": datetime.utcnow().isoformat(),
         }
         with open(MODEL_PATH, "w", encoding="utf-8") as f:
@@ -613,6 +643,7 @@ class RobotLearner:
         return x
 
     def choose_action(self, board, current_num, next_num, level):
+        self.decision_count += 1
         candidates = []
         for col in range(COLS):
             x = self._features_for_col(board, current_num, next_num, level, col)
@@ -662,7 +693,7 @@ class RobotLearner:
 
         chosen_col, x, nn_score, strat_score, final_score, strategy_name = chosen
 
-        proposal = self.strategy_engine.suggest(board, current_num, next_num, level)
+        proposal = self.strategy_engine.suggest(board, current_num, next_num, level, turn_index=self.decision_count)
         used_proposal = False
         decision = "base"
 
@@ -686,11 +717,11 @@ class RobotLearner:
                     final_score = proposal_score
                     strategy_name = proposal["candidate"]["name"]
                     decision = "proposal_applied"
-                    reason = "Yeni strateji onerisi kabul edildi"
+                    reason = f"Yeni strateji onerisi kabul edildi ({proposal.get('engine_name', 'unknown_engine')})"
                     self.strategy_engine.maybe_add_strategy(proposal["candidate"])
                 else:
                     decision = "proposal_rejected"
-                    reason = "Yeni strateji onerisi risk/puan dengesinde reddedildi"
+                    reason = f"Yeni strateji onerisi reddedildi ({proposal.get('engine_name', 'unknown_engine')})"
 
         potential = potential_sum9_count(board, current_num, chosen_col) + potential_lock_count(board, current_num, chosen_col)
         risk_val = risk_score(board, chosen_col)
@@ -709,6 +740,9 @@ class RobotLearner:
             "nn_score": nn_score,
             "strat_score": strat_score,
             "final_score": final_score,
+            "strategy_count": self.strategy_engine.active_count(),
+            "proposal_engine_count": self.strategy_engine.proposal_engine_count(),
+            "proposal_text": proposal.get("reason") if proposal else "Yeni onerisi yok",
         }
         return chosen_col, meta
 
@@ -774,6 +808,9 @@ class VersusGame:
         self.root.geometry(f"{WIN_W}x{WIN_H}")
         self.root.resizable(False, False)
 
+        self.wait_mode_var = tk.BooleanVar(value=False)
+        self._build_menu()
+
         self.canvas = tk.Canvas(root, width=WIN_W, height=WIN_H, bg="#0b1220", highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
 
@@ -809,6 +846,8 @@ class VersusGame:
         self.last_input_time = time.time()
         self.last_idle_analysis = 0.0
         self.status = "Insan hamlesini bekliyor"
+        self.reason_feed = deque(maxlen=9)
+        self.last_proposal_banner = "Henüz öneri yok"
 
         self.root.bind("<Left>", self.on_left)
         self.root.bind("<Right>", self.on_right)
@@ -821,12 +860,68 @@ class VersusGame:
         self.root.bind("<S>", self.on_drop_fast)
         self.root.bind("<space>", self.on_drop_normal)
         self.root.bind("<Return>", self.on_drop_normal)
+        self.root.bind("<b>", self.on_toggle_wait_mode)
+        self.root.bind("<B>", self.on_toggle_wait_mode)
         self.root.bind("<q>", self.on_quit)
         self.root.bind("<Q>", self.on_quit)
         self.root.bind("<Escape>", self.on_quit)
 
+        self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.")
         self.prepare_robot_move()
         self.tick()
+
+    def _build_menu(self):
+        menubar = tk.Menu(self.root)
+
+        menu_features = tk.Menu(menubar, tearoff=0)
+        menu_features.add_checkbutton(
+            label="Bekleme Modu (B)",
+            variable=self.wait_mode_var,
+            command=self.toggle_wait_mode,
+        )
+        menu_features.add_command(label="Simdi Log Analizi", command=self.manual_idle_analysis)
+        menu_features.add_separator()
+        menu_features.add_command(label="Cikis", command=self.on_quit)
+        menubar.add_cascade(label="Ozellikler", menu=menu_features)
+
+        menu_help = tk.Menu(menubar, tearoff=0)
+        menu_help.add_command(label="Hakkinda", command=self.show_about)
+        menubar.add_cascade(label="Yardim", menu=menu_help)
+
+        self.root.config(menu=menubar)
+
+    def show_about(self):
+        messagebox.showinfo(
+            "Hakkinda",
+            "Sayisal Tetris V3\n"
+            "Windows Human vs Robot AI\n\n"
+            "- 10 aktif robot stratejisi\n"
+            "- 5 öneri motoru\n"
+            "- Kalıcı öğrenme belleği\n"
+            "- Benzersiz log kaydı ve bekleme analiz modu",
+        )
+
+    def push_reason(self, text):
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.reason_feed.append(f"[{ts}] {text}")
+
+    def toggle_wait_mode(self):
+        enabled = self.wait_mode_var.get()
+        if enabled:
+            self.status = "Bekleme modu acik: Bosta analiz var, otomatik birakma yok"
+            self.push_reason("Bekleme modu açıldı. Bosta sadece analiz yapilacak.")
+        else:
+            self.status = "Bekleme modu kapali: 5s sonra analiz + otomatik hamle"
+            self.push_reason("Bekleme modu kapatıldı. Eski otomatik akışa dönüldü.")
+
+    def on_toggle_wait_mode(self, _event=None):
+        self.wait_mode_var.set(not self.wait_mode_var.get())
+        self.toggle_wait_mode()
+
+    def manual_idle_analysis(self):
+        trained, reward = self.robot_ai.analyze_previous_logs()
+        self.status = f"Manuel analiz: {trained} hamle tekrarlandi, toplam odul {int(reward)}"
+        self.push_reason(self.status)
 
     def on_quit(self, _event=None):
         self.robot_ai.save_memory()
@@ -966,6 +1061,16 @@ class VersusGame:
         self.robot_col = col
         self.robot_fast = True
         self.robot_meta = meta
+        if meta and meta.get("proposal"):
+            engine = meta["proposal"].get("engine_name", "unknown")
+            self.last_proposal_banner = f"Oneri: {meta['proposal']['candidate']['name']} [{engine}] -> Sutun {meta['proposal']['col']}"
+        else:
+            self.last_proposal_banner = "Bu tur yeni strateji onerisi yok"
+
+        if meta:
+            self.push_reason(
+                f"Robot secimi: sutun {self.robot_col}, strateji {meta.get('strategy', 'N/A')}, karar {meta.get('decision', 'N/A')}, risk {meta.get('risk', 0)}"
+            )
 
     def perform_turn(self, human_fast=False, auto_reason=None):
         if self.game_over:
@@ -1080,6 +1185,15 @@ class VersusGame:
         self.logger.write(player_log)
         self.logger.write(robot_log)
 
+        self.push_reason(
+            f"Tur {self.turn}: Insan +{player_result['points']} puan, Robot +{robot_result['points']} puan, robot karar={robot_extra.get('proposal_decision', 'N/A')}"
+        )
+        if self.robot_meta and self.robot_meta.get("proposal"):
+            p = self.robot_meta["proposal"]
+            self.push_reason(
+                f"Yeni strateji onerisi goruldu: {p['candidate']['name']} ({p.get('engine_name', 'unknown')}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}"
+            )
+
         self.flash_until = time.time() + 0.24
 
         if board_full(self.player_board) or board_full(self.robot_board):
@@ -1192,12 +1306,16 @@ class VersusGame:
             "D / Sag Ok   : Saga kaydir",
             "Space/Enter  : Yavas birak",
             "S / Asagi Ok : Hizli birak",
+            "B            : Bekleme modu ac/kapat",
             "Q / Esc      : Cikis",
             "",
             f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
+            f"Oneri motoru sayisi: {self.robot_ai.strategy_engine.proposal_engine_count()}",
             f"Model guncelleme: {self.robot_ai.total_updates}",
             f"Son egitim hatasi: {self.robot_ai.last_train_error:.4f}",
+            f"Bekleme modu: {'ACIK' if self.wait_mode_var.get() else 'KAPALI'}",
             "",
+            f"Son onerisi: {self.last_proposal_banner}",
             f"Durum: {self.status}",
             f"Log dosyasi: {os.path.basename(self.logger.path)}",
         ]
@@ -1229,6 +1347,47 @@ class VersusGame:
             )
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 108, text=self.status, fill="#cbd5e1", font=("Segoe UI", 11))
 
+        features = [
+            ("Ozellik Menusu", True),
+            ("Hakkinda Penceresi", True),
+            ("Bekleme Modu (B/Menu)", True),
+            ("10 Aktif Strateji", self.robot_ai.strategy_engine.active_count() >= 10),
+            ("5 Oneri Motoru", self.robot_ai.strategy_engine.proposal_engine_count() >= 5),
+            ("Benzersiz Log", True),
+            ("5s Bosluk Analizi", True),
+            ("Akil Yurutme Akisi", True),
+        ]
+        fx = PANEL_X
+        fy = TOP_Y + 520
+        self.canvas.create_text(fx, fy, anchor="nw", text="Planlanan Ozellik Kontrolu", fill="#e2e8f0", font=("Segoe UI", 11, "bold"))
+        for i, (name, ok) in enumerate(features):
+            txt = f"{'OK' if ok else 'EKSİK'}  {name}"
+            self.canvas.create_text(
+                fx,
+                fy + 22 + i * 18,
+                anchor="nw",
+                text=txt,
+                fill="#86efac" if ok else "#fca5a5",
+                font=("Segoe UI", 10),
+            )
+
+        feed_x1 = BOARD_PADDING
+        feed_y1 = TOP_Y + BOARD_H + 10
+        feed_x2 = WIN_W - 20
+        feed_y2 = WIN_H - 20
+        self.canvas.create_rectangle(feed_x1, feed_y1, feed_x2, feed_y2, outline="#475569", width=2, fill="#0f172a")
+        self.canvas.create_text(feed_x1 + 10, feed_y1 + 8, anchor="nw", text="Robot Akil Yurutme Akisi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
+
+        for i, line in enumerate(list(self.reason_feed)[-8:]):
+            self.canvas.create_text(
+                feed_x1 + 10,
+                feed_y1 + 32 + i * 19,
+                anchor="nw",
+                text=line,
+                fill="#93c5fd",
+                font=("Consolas", 10),
+            )
+
     def _idle_analyze_if_needed(self):
         if self.game_over or self.phase != "player_input":
             return
@@ -1243,8 +1402,10 @@ class VersusGame:
         trained, reward = self.robot_ai.analyze_previous_logs()
         self.last_idle_analysis = now
         self.status = f"Boslukta analiz: {trained} hamle tekrarlandi, toplam odul {int(reward)}"
+        self.push_reason(self.status)
 
-        self.perform_turn(human_fast=False, auto_reason="5s_idle_auto_drop")
+        if not self.wait_mode_var.get():
+            self.perform_turn(human_fast=False, auto_reason="5s_idle_auto_drop")
 
     def on_left(self, _event=None):
         if self.game_over or self.phase != "player_input":

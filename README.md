@@ -17,13 +17,25 @@ Oyun pencereli (Windows GUI) calisir.
 - 5 saniye kullanici beklerse robot gecmis loglari tekrar ederek analiz yapar
 - Loglar benzersiz adlarla `logs/` klasorune yazilir
 - Ogrenme motoruna ek olarak strateji onerici motoru vardir
+- 10 aktif robot stratejisi bulunur
+- 5 farkli strateji onerisi motoru bulunur
+- Robotun onerisi ekranda gorulur (uygulandi / reddedildi)
+- Oyunun altinda akan robot akil yurutme paneli vardir
+- Ozellikler menusu + Hakkinda penceresi vardir
+- Bekleme modu `B` tusu veya menuden acilip kapanir
 
 ### Kontroller
 - `A` veya `Sol Ok`: sola kaydir
 - `D` veya `Sag Ok`: saga kaydir
 - `Space` veya `Enter`: normal birak
 - `S` veya `Asagi Ok`: hizli birak
+- `B`: bekleme modu ac/kapat
 - `Q` veya `Esc`: cikis
+
+### Menu
+- `Ozellikler` -> `Bekleme Modu (B)`
+- `Ozellikler` -> `Simdi Log Analizi`
+- `Yardim` -> `Hakkinda`
 
 ### Calistirma
 ```bat
@@ -57,12 +69,19 @@ The game runs in a Windows GUI window.
 - If user is idle for 5 seconds, robot replays previous logs for self-analysis
 - Logs are saved with unique names under `logs/`
 - Strategy proposal engine works together with learning engine
+- 10 active robot strategies are available
+- 5 distinct strategy proposal engines are available
+- Proposal status is shown on screen (applied / rejected)
+- A scrolling robot reasoning feed is shown at the bottom
+- Features menu + About dialog are included
+- Wait mode can be toggled with `B` key or from menu
 
 ### Controls
 - `A` or `Left`: move left
 - `D` or `Right`: move right
 - `Space` or `Enter`: normal drop
 - `S` or `Down`: fast drop
+- `B`: toggle wait mode
 - `Q` or `Esc`: quit
 
 ### Run
