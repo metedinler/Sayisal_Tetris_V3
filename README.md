@@ -221,3 +221,17 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - SID oynatma artik ayri modulde yonetilir: `sid_player.py`.
 - HVSC player listesine gore komut satiri playlist icin secilen player: `sidplay-fp` (`sidplayfp`).
 - Tam Ses modunda `sidplayfp` komutu ile SID dosyalari sira ile oynatilir.
+
+## SID ve Panel Hotfix Eki (Append-Only)
+
+### 2026-03-18 - Son hotfixler (TR)
+- SID oynatici sureci Windows tarafinda gizli pencere ile baslatilir; oyun acikken ayri terminal penceresi gorunmez.
+- Oyun kapanisinda SID sureci ve alt surecleri zorla kapatilarak muzik artakta kalmasi engellenir.
+- SID parcalari tek parcada kalmayacak sekilde otomatik ilerler; her parcada sure siniri uygulanip bir sonraki parcaya gecilir.
+- Robot Akil Yurutme Akisi paneli iki sayi yuksekligi kadar daha asagi alinip gorunur yukseklik kucultuldu.
+
+### 2026-03-18 - Latest hotfixes (EN)
+- SID player now starts with hidden console window on Windows.
+- On game exit, SID process tree is force-closed to prevent lingering background music.
+- SID playback now rotates to the next track automatically with a bounded per-track duration.
+- Robot reasoning feed panel was lowered further by about two-number height and its visible area reduced.

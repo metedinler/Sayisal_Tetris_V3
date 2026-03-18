@@ -1895,7 +1895,9 @@ class VersusGame:
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 162, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
 
         feed_x1 = LEFT_X + 140
-        feed_y1 = max(TOP_Y + BOARD_H - 120, info_bottom + 8)
+        # Robot bildirim panelini iki sayi yuksekligi kadar daha asagi al.
+        feed_height_reduction = CELL * 6
+        feed_y1 = max(TOP_Y + BOARD_H - 120, info_bottom + 8) + feed_height_reduction
         feed_x2 = min(win_w - 28, panel_x - 70)
         if feed_x2 - feed_x1 < 240:
             feed_x2 = feed_x1 + 240
@@ -1928,11 +1930,13 @@ class VersusGame:
             )
 
         filtered_feed = self.get_filtered_reason_feed()
-        for i, item in enumerate(filtered_feed[-8:]):
+        feed_line_step = 19
+        max_feed_rows = max(1, int((feed_y2 - feed_y1 - 36) / feed_line_step))
+        for i, item in enumerate(filtered_feed[-max_feed_rows:]):
             line = f"[{item['time']}] ({item['type']}) {item['text']}"
             self.canvas.create_text(
                 feed_x1 + 10,
-                feed_y1 + 32 + i * 19,
+            feed_y1 + 32 + i * feed_line_step,
                 anchor="nw",
                 text=line,
                 fill="#93c5fd",

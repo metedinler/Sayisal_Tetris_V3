@@ -2,6 +2,8 @@ import json
 import os
 import shutil
 import subprocess
+import atexit
+import time
 from datetime import datetime
 
 
@@ -19,8 +21,12 @@ class SidMusicManager:
         self.current_index = -1
         self.current_track = ""
         self.proc = None
+        self.track_started_at = 0.0
+        # SID tunes may loop forever. Keep tracks rotating to preserve playlist flow.
+        self.max_track_seconds = 25.0
         self.player_path = self._resolve_player_path()
         self.available = self.player_path is not None
+        atexit.register(self.stop)
 
     def _resolve_player_path(self):
         candidates = [
@@ -28,6 +34,8 @@ class SidMusicManager:
             f"{self.player_cmd}.exe",
             os.path.join(self.root_dir, f"{self.player_cmd}.exe"),
             os.path.join(self.root_dir, self.player_cmd),
+            os.path.join(self.sid_dir, f"{self.player_cmd}.exe"),
+            os.path.join(self.sid_dir, self.player_cmd),
         ]
         for item in candidates:
             if os.path.isfile(item):
@@ -116,13 +124,24 @@ class SidMusicManager:
 
         self.stop()
         try:
+            creation_flags = 0
+            startup_info = None
+            if os.name == "nt":
+                creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                startup_info = subprocess.STARTUPINFO()
+                startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
             self.proc = subprocess.Popen(
-                [self.player_path, path],
+                [self.player_path, "-q", f"-t{int(self.max_track_seconds)}", path],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+                startupinfo=startup_info,
             )
             self.current_index = index
             self.current_track = self.playlist[index]
+            self.track_started_at = time.time()
             self._save_state(self.current_track, self.current_index)
             return True
         except Exception:
@@ -136,13 +155,38 @@ class SidMusicManager:
             return
         if self.proc.poll() is not None:
             self.play_index((self.current_index + 1) % len(self.playlist))
+            return
+        # Some SID tracks can run forever; rotate to next track after a safe max duration.
+        if self.track_started_at > 0 and (time.time() - self.track_started_at) >= self.max_track_seconds:
+            self.play_index((self.current_index + 1) % len(self.playlist))
 
     def stop(self):
         if self.proc is None:
             return
+        pid = self.proc.pid
         try:
             if self.proc.poll() is None:
                 self.proc.terminate()
+                self.proc.wait(timeout=1.5)
         except Exception:
             pass
+        try:
+            if self.proc.poll() is None:
+                self.proc.kill()
+                self.proc.wait(timeout=1.0)
+        except Exception:
+            pass
+        # Some SID players may create helper/child processes; ensure full tree is closed on Windows.
+        if os.name == "nt" and pid:
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(pid)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            except Exception:
+                pass
+        self.track_started_at = 0.0
         self.proc = None

@@ -51,3 +51,10 @@ Kurallar:
 - SID oynatma kodu ayri modulde toplandi: `sid_player.py`.
 - HVSC player listesinden komut satiri playlist icin secilen player `sidplay-fp` (`sidplayfp`) olarak sabitlendi.
 - Tam Ses modunda SID dosyalari harici player sureci ile track-track oynatilir.
+
+## 2026-03-18 - SID Surec Hotfix + Panel Ince Ayar
+- SID sureci Windows'ta gizli pencere ile baslatildi; oyun sirasinda ayri terminal penceresi gorunmesi engellendi.
+- Oyun kapanisinda SID surec agaci zorla kapatilarak muzik surecinin artakta kalmasi duzeltildi.
+- SID parca akisina parca basi sure limiti eklendi; sure dolunca otomatik olarak bir sonraki parcaya gecis saglandi.
+- Robot Akil Yurutme Akisi paneli iki sayi yuksekligi kadar daha asagi alinip panel gorunen alani kucultuldu.
+- Guncel kod ile EXE yeniden derlendi.

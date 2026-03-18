@@ -366,3 +366,19 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 - SID calma mantigi ana oyundan ayrilarak `sid_player.py` modulune tasinmistir.
 - HVSC players listesinden komut satiri playlist icin secilen player: `sidplay-fp` (`sidplayfp`).
 - Uygulama Tam Ses modunda `sidplayfp <dosya.sid>` cagrisi ile sarkilari tek tek calistirir.
+
+## 17. SID Surec ve Panel Hotfixleri (Append-Only)
+
+### 17.1 SID surec yonetimi
+- Windows ortaminda `sidplayfp` sureci terminal penceresi acmadan (hidden/no-window) baslatilir.
+- Oyun kapanisinda SID ana sureci ve olasi alt surecleri kapatilir; kapanis sonrasi muzik devam etmez.
+- Cikis akisinda ek guvenlik icin surec temizligi zorlamali olarak uygulanir.
+
+### 17.2 SID playlist akisi
+- SID parcalarinin tek parca uzerinde kalmasini engellemek icin parca basi sure limiti uygulanir.
+- Sure doldugunda bir sonraki parcaya gecilir ve playlist dairesel devam eder.
+- Bu davranis `Tam Ses` modunda otomatik akisin kesintisiz devam etmesini hedefler.
+
+### 17.3 Robot bildirim paneli boyutu
+- `Robot Akil Yurutme Akisi` panelinin baslangic Y konumu iki sayi yuksekligi kadar daha asagi alinmistir.
+- Boylece panelin gorunen yuksekligi azaltilarak ust panelle cakisma riski dusurulmustur.
