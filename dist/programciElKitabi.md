@@ -138,7 +138,7 @@ Bu yapi klasik karar agaci siniflandirmasi degildir; kural tabanli asamali karar
 ## 6. Bekleme Modu ve Arka Plan Analizi
 Bekleme modu davranislari:
 - `B` tusu veya menu ile ac/kapat.
-- Kullanici 5 saniye hareketsizse log replay analizi tetiklenir.
+- Kullanici 5 saniye hareketsizse log replay analizi tetiklenir. 
 - Bekleme modu acikse sadece analiz yapilir.
 - Bekleme modu kapaliyse analiz sonrasi otomatik hamle akisi devam eder.
 

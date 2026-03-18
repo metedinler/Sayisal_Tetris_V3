@@ -122,3 +122,29 @@ py tetris_v3_windows_ai.py
 4. Toggle wait mode with `B` and stay idle for 5 seconds.
 5. Watch the robot reasoning stream in the bottom panel.
 6. Test filters from `Features -> Reasoning Filter`.
+
+## Dokumantasyon Eki (Append-Only)
+
+Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append mantigi ile buyutulur, mevcut metin silinmez.
+
+### Son Eklenen Davranislar (TR)
+- Oyun sonrasinda uygulamayi kapatmadan yeni maca gecis eklendi (`R` / menu).
+- Pencere yeniden boyutlandirmaya acildi ve panel yerlesimi dinamik hale getirildi.
+- Robot akil yurutme panelinde yazi tasmasini azaltmak icin satir sarma uygulandi.
+- Bekleme modu replay analizine robot kayitlarina ek olarak insan kayitlari da dahil edildi.
+- Kalici oyuncu profili eklendi: oyuncu adi, toplam mac, kazanma/kaybetme, en yuksek skor ve seviye.
+- Patlama geri bildirimi gelistirildi: ses + hucre bazli flash + taraf bazli (insan/robot) farkli efekt.
+- "Planlanan Ozellik Kontrolu" bolumu ekrandan kaldirildi.
+
+### Recent Additions (EN)
+- In-session restart after game over was added (`R` / menu).
+- Window resizing was enabled and panel layout was made dynamic.
+- Reasoning feed wrapping was improved to reduce overlap.
+- Idle replay analysis now learns from both robot and human logs.
+- Persistent player profile was added: name, total matches, wins/losses, best score and level.
+- Explosion feedback was improved with sound + cell-local flash + side-specific (human/robot) effects.
+- The on-screen "Planned Features Check" block was removed.
+
+### Degisiklik Gunlugu
+- Bu proje icin kalici degisiklik gunlugu dosyasi: `CHANGELOG.md`
+- Kural: Yeni kayitlar dosyanin sonuna append edilir; mevcut kayitlar silinmez.

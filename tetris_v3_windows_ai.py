@@ -961,8 +961,10 @@ class VersusGame:
         self.flash_player = []
         self.flash_robot = []
         self.flash_until = 0.0
-        self.impact_flash_until = 0.0
-        self.impact_flash_color = "#fef08a"
+        self.player_impact_until = 0.0
+        self.robot_impact_until = 0.0
+        self.player_impact_color = "#34d399"
+        self.robot_impact_color = "#f472b6"
 
         self.phase = "player_input"
         self.game_over = False
@@ -1183,8 +1185,10 @@ class VersusGame:
         self.flash_player = []
         self.flash_robot = []
         self.flash_until = 0.0
-        self.impact_flash_until = 0.0
-        self.impact_flash_color = "#fef08a"
+        self.player_impact_until = 0.0
+        self.robot_impact_until = 0.0
+        self.player_impact_color = "#34d399"
+        self.robot_impact_color = "#f472b6"
 
         self.phase = "player_input"
         self.game_over = False
@@ -1256,32 +1260,45 @@ class VersusGame:
             "combo_mult": mult,
         }
 
-    def _play_explosion_sound(self, intensity):
+    def _play_explosion_sound(self, side, intensity):
         if winsound is None:
             return
 
         def _beep_pattern():
             try:
-                if intensity >= 2:
-                    winsound.Beep(280, 65)
-                    winsound.Beep(360, 75)
-                    winsound.Beep(460, 95)
+                if side == "player":
+                    if intensity >= 2:
+                        winsound.Beep(520, 55)
+                        winsound.Beep(690, 75)
+                        winsound.Beep(820, 95)
+                    else:
+                        winsound.Beep(630, 45)
+                        winsound.Beep(760, 55)
                 else:
-                    winsound.Beep(420, 45)
-                    winsound.Beep(520, 55)
+                    if intensity >= 2:
+                        winsound.Beep(260, 65)
+                        winsound.Beep(330, 80)
+                        winsound.Beep(410, 100)
+                    else:
+                        winsound.Beep(320, 50)
+                        winsound.Beep(380, 60)
             except Exception:
                 pass
 
         threading.Thread(target=_beep_pattern, daemon=True).start()
 
-    def _trigger_explosion_feedback(self, explosion_count, cleared_cells):
+    def _trigger_explosion_feedback(self, side, explosion_count, cleared_cells):
         if explosion_count <= 0 and cleared_cells <= 0:
             return
 
         big_blast = explosion_count >= 3 or cleared_cells >= 8
-        self.impact_flash_color = "#fb7185" if big_blast else "#fef08a"
-        self.impact_flash_until = time.time() + (0.32 if big_blast else 0.2)
-        self._play_explosion_sound(2 if big_blast else 1)
+        if side == "player":
+            self.player_impact_color = "#10b981" if big_blast else "#86efac"
+            self.player_impact_until = time.time() + (0.34 if big_blast else 0.22)
+        else:
+            self.robot_impact_color = "#f43f5e" if big_blast else "#f9a8d4"
+            self.robot_impact_until = time.time() + (0.34 if big_blast else 0.22)
+        self._play_explosion_sound(side, 2 if big_blast else 1)
 
     def _apply_piece(self, board, num, col, fast, level, visual_events):
         row = self._drop_number(board, num, col, fast)
@@ -1412,9 +1429,8 @@ class VersusGame:
         self.player_score += player_result["points"]
         self.robot_score += robot_result["points"]
 
-        total_explosions = player_result["explosions"] + robot_result["explosions"]
-        total_cleared = player_result["exploded_cells"] + robot_result["exploded_cells"]
-        self._trigger_explosion_feedback(total_explosions, total_cleared)
+        self._trigger_explosion_feedback("player", player_result["explosions"], player_result["exploded_cells"])
+        self._trigger_explosion_feedback("robot", robot_result["explosions"], robot_result["exploded_cells"])
 
         self.level = max(1, max(self.player_score, self.robot_score) // 60 + 1)
 
@@ -1549,7 +1565,7 @@ class VersusGame:
             self.status = "Insan hamlesini bekliyor"
             self.last_input_time = time.time()
 
-    def _draw_board(self, board, x0, y0, title, active_col=None, active_num=None, flash_cells=None):
+    def _draw_board(self, board, x0, y0, title, active_col=None, active_num=None, flash_cells=None, flash_style="player"):
         self.canvas.create_text(x0, y0 - 22, anchor="nw", text=title, fill="#e5e7eb", font=("Segoe UI", 13, "bold"))
         self.canvas.create_rectangle(x0 - 2, y0 - 2, x0 + BOARD_W + 2, y0 + BOARD_H + 2, outline="#94a3b8", width=2)
 
@@ -1572,11 +1588,24 @@ class VersusGame:
                     label = alabel
 
                 if flashing and (r, c) in flash_set:
-                    fill = "#f8fafc" if pulse == 0 else "#fef08a"
+                    if flash_style == "player":
+                        fill = "#ecfdf5" if pulse == 0 else "#86efac"
+                    else:
+                        fill = "#fff1f2" if pulse == 0 else "#fda4af"
 
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline="#0b1220", width=1)
                 if label:
                     self.canvas.create_text((x1 + x2) // 2, (y1 + y2) // 2, text=label, fill="#f8fafc", font=("Segoe UI", 12, "bold"))
+
+                if flashing and (r, c) in flash_set and pulse == 1:
+                    marker = "+X" if flash_style == "player" else "X+"
+                    self.canvas.create_text(
+                        (x1 + x2) // 2,
+                        (y1 + y2) // 2,
+                        text=marker,
+                        fill="#0f172a",
+                        font=("Consolas", 10, "bold"),
+                    )
 
     def draw(self):
         self.canvas.delete("all")
@@ -1598,6 +1627,7 @@ class VersusGame:
             active_col=self.player_col if self.phase == "player_input" and not self.game_over else None,
             active_num=self.current_num,
             flash_cells=self.flash_player,
+            flash_style="player",
         )
 
         self._draw_board(
@@ -1608,6 +1638,7 @@ class VersusGame:
             active_col=self.robot_col if self.phase == "player_input" and not self.game_over else None,
             active_num=self.current_num,
             flash_cells=self.flash_robot,
+            flash_style="robot",
         )
 
         nx = panel_x
@@ -1673,6 +1704,8 @@ class VersusGame:
                 font=("Segoe UI", 11 if i != 0 else 12, "bold" if i == 0 else "normal"),
             )
 
+        info_bottom = y + len(lines) * 22
+
         if self.game_over:
             bx1 = LEFT_X + 80
             by1 = TOP_Y + 210
@@ -1690,33 +1723,8 @@ class VersusGame:
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 108, text=self.status, fill="#cbd5e1", font=("Segoe UI", 11))
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 126, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
 
-        features = [
-            ("Ozellik Menusu", True),
-            ("Hakkinda Penceresi", True),
-            ("Bekleme Modu (B/Menu)", True),
-            ("10 Aktif Strateji", self.robot_ai.strategy_engine.active_count() >= 10),
-            ("5 Oneri Motoru", self.robot_ai.strategy_engine.proposal_engine_count() >= 5),
-            ("Benzersiz Log", True),
-            ("5s Bosluk Analizi", True),
-            ("Akil Yurutme Akisi", True),
-        ]
-        fx = panel_x
-        fy = TOP_Y + 520
-        self.canvas.create_text(fx, fy, anchor="nw", text="Planlanan Ozellik Kontrolu", fill="#e2e8f0", font=("Segoe UI", 11, "bold"))
-        for i, (name, ok) in enumerate(features):
-            txt = f"{'OK' if ok else 'EKSİK'}  {name}"
-            self.canvas.create_text(
-                fx,
-                fy + 22 + i * 18,
-                anchor="nw",
-                text=txt,
-                fill="#86efac" if ok else "#fca5a5",
-                font=("Segoe UI", 10),
-            )
-
-        features_bottom = fy + 22 + len(features) * 18
         feed_x1 = BOARD_PADDING
-        feed_y1 = max(TOP_Y + BOARD_H + 10, features_bottom + 16)
+        feed_y1 = max(TOP_Y + BOARD_H + 10, info_bottom + 14)
         feed_x2 = min(win_w - 20, panel_x - 24)
         if feed_x2 - feed_x1 < 280:
             feed_x2 = feed_x1 + 280
@@ -1726,13 +1734,24 @@ class VersusGame:
         self.canvas.create_rectangle(feed_x1, feed_y1, feed_x2, feed_y2, outline="#475569", width=2, fill="#0f172a")
         self.canvas.create_text(feed_x1 + 10, feed_y1 + 8, anchor="nw", text="Robot Akil Yurutme Akisi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
 
-        if time.time() < self.impact_flash_until:
+        if time.time() < self.player_impact_until:
             self.canvas.create_rectangle(
                 LEFT_X,
                 TOP_Y,
+                LEFT_X + BOARD_W,
+                TOP_Y + BOARD_H,
+                fill=self.player_impact_color,
+                stipple="gray50",
+                outline="",
+            )
+
+        if time.time() < self.robot_impact_until:
+            self.canvas.create_rectangle(
+                right_x,
+                TOP_Y,
                 right_x + BOARD_W,
                 TOP_Y + BOARD_H,
-                fill=self.impact_flash_color,
+                fill=self.robot_impact_color,
                 stipple="gray50",
                 outline="",
             )
