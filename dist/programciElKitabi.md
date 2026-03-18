@@ -293,3 +293,34 @@ Bu bolum son guncellemeleri silmeden, sadece ekleyerek takip etmek icin ayrilmis
 - README ve Programci El Kitabi metinleri append-only bakim modeli ile guncellenir.
 - Yeni degisiklikler silme olmadan yeni baslik/alt baslik eklenerek yazilir.
 - Kalici degisiklik gunlugu `CHANGELOG.md` dosyasinda tutulur ve yeni kayitlar sona eklenir.
+
+## 14. Oyun Sonu Sonuc Gosterimi ve Puanlama Notlari (Append-Only)
+
+### 14.1 Kazanan metni
+- Oyun sonu durumunda `status` alani kisa ve net kazanan metni verir:
+	- `Tebrikler <OyuncuAdi> kazandi`
+	- `Tebrikler Robot kazandi`
+	- `Mac berabere bitti`
+- Ayrica `game_end_reason` metni ile bitis nedeni (`Neden:` satiri) ayri gosterilir.
+- Bu ayirim, "skor daha dusuk ama kazandi" gibi durumlari aciklar; kazanan bitis kurali ile belirlenir.
+
+### 14.2 Merkezi puan sabitleri
+Puanlama degerleri kodun basinda sabitlenmistir:
+- `SUM9_PAIR_POINTS`
+- `LOCK_PATTERN_POINTS`
+- `LOCK_EXTRA_CELL_POINTS`
+- `UP_PUSH_LOCK_BONUS`
+- `UP_PUSH_COLLISION_BASE`
+- `UP_PUSH_COLLISION_EXTRA`
+- `JOKER_BASE_POINTS`
+- `JOKER_AROUND_POINTS`
+- `BOMB_BASE_POINTS`
+- `BOMB_PER_CELL_POINTS`
+- `COMBO_MULT_TWO`, `COMBO_MULT_THREE`, `COMBO_MULT_FOUR_PLUS`
+
+Bu yapi ile puan dagilimi tek yerden degistirilebilir.
+
+### 14.3 Ogrenme etkisi
+- Puan sabitleri degistiginde odul fonksiyonu da degismis olur.
+- Robot online ogrenme ve replay analizi ile yeni odul dagilimina yeniden adapte olur.
+- Erken oyunda top-2 kesif mekanizmasi hizli yeniden uyumlanmayi destekler.

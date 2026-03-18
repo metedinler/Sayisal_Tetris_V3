@@ -24,3 +24,10 @@ Kurallar:
 - Insan/robot icin farkli patlama ses ve flash efektleri eklendi.
 - "Planlanan Ozellik Kontrolu" alani ekrandan kaldirildi.
 - Patlayan hucrelerde lokal +X/X+ hucre efekti guclendirildi.
+
+## 2026-03-18 - Oyun Sonu Sonuc + Puanlama Iyilestirme
+- Oyun sonu kazanan metni netlestirildi: `Tebrikler <OyuncuAdi> kazandi`, `Tebrikler Robot kazandi`, `Mac berabere bitti`.
+- Oyun sonu paneline `Neden:` satiri eklendi; bitis kosulu acikca gosterilir.
+- Kazananin skordan degil bitis kuralindan gelebilecegi durumlar icin aciklayici not eklendi.
+- Coklu patlama puanlamasi merkezi sabitlere tasindi (sum9/kilit/joker/bomba/combo carpani).
+- Puanlama sabitleri degistiginde robotun online + replay ile yeniden uyumlanacagi dokumante edildi.

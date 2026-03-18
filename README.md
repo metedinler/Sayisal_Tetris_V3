@@ -148,3 +148,34 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 ### Degisiklik Gunlugu
 - Bu proje icin kalici degisiklik gunlugu dosyasi: `CHANGELOG.md`
 - Kural: Yeni kayitlar dosyanin sonuna append edilir; mevcut kayitlar silinmez.
+
+## Oyun Sonu ve Puanlama Eki (Append-Only)
+
+### Kazanan Belirleme (TR)
+- Oyun sonunda ekranda acik sonuc metni gosterilir:
+	- `Tebrikler <OyuncuAdi> kazandi`
+	- `Tebrikler Robot kazandi`
+	- `Mac berabere bitti`
+- Sonuc satirinin altinda `Neden:` alani ile bitis kurali gosterilir.
+- Bu oyunda kazanan her zaman en yuksek skora gore belirlenmez; bitis kurallari (ust satir / 1-0 tas) onceliklidir.
+
+### Multi-Patlama Puanlama (TR)
+- Sum-9 eslesmesi: `SUM9_PAIR_POINTS`
+- Kilit patlama temel puani: `LOCK_PATTERN_POINTS`
+- Kilit ekstra hucre puani: `LOCK_EXTRA_CELL_POINTS`
+- Joker puani: `JOKER_BASE_POINTS + JOKER_AROUND_POINTS * cevre_hucre`
+- Bomba puani: `BOMB_BASE_POINTS + BOMB_PER_CELL_POINTS * temizlenen_hucre`
+- Combo carpani:
+	- 2 patlama: `COMBO_MULT_TWO`
+	- 3 patlama: `COMBO_MULT_THREE`
+	- 4+ patlama: `COMBO_MULT_FOUR_PLUS`
+
+### Puan Degisirse Robot Tekrar Ogrenir mi? (TR)
+- Evet. Odul dagilimi degistiginde robot yeni puanlara gore online olarak tekrar uyumlanir.
+- Bekleme modu replay analizi de yeni odul dagilimini pekistirir.
+- Ilk oyunlarda hizli adaptasyon icin ilk iki iyi secenekten kesif mekanizmasi acik kalir.
+
+### Winner and Scoring Note (EN)
+- End-of-match now shows explicit winner text and reason line.
+- Winner may differ from score leader because rule-based end conditions have priority.
+- Explosion scoring constants are centralized for easier tuning; changing them will cause the learner to adapt again over time.

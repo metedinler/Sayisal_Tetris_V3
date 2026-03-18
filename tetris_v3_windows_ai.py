@@ -44,6 +44,22 @@ EARLY_LEARNING_TURNS = 80
 EARLY_EPSILON = 0.22
 EARLY_TOP_CHOICES = 2
 
+# Puanlama sabitleri (degistirildiginde oyun odul dagilimi degisir)
+SUM9_PAIR_POINTS = 5
+LOCK_PATTERN_POINTS = 9
+LOCK_EXTRA_CELL_POINTS = 1
+UP_PUSH_LOCK_BONUS = 5
+UP_PUSH_COLLISION_BASE = 5
+UP_PUSH_COLLISION_EXTRA = 1
+JOKER_BASE_POINTS = 7
+JOKER_AROUND_POINTS = 2
+BOMB_BASE_POINTS = 10
+BOMB_PER_CELL_POINTS = 1
+
+COMBO_MULT_TWO = 1.25
+COMBO_MULT_THREE = 1.55
+COMBO_MULT_FOUR_PLUS = 2.1
+
 if getattr(sys, "frozen", False):
     ROOT_DIR = os.path.dirname(sys.executable)
 else:
@@ -254,14 +270,14 @@ def apply_lock_explosions(board, visual_events, up_push_mode=False):
         for cells in patterns:
             had_lock = True
             explosion_count += 1
-            wave_points += 9
+            wave_points += LOCK_PATTERN_POINTS
             if up_push_mode:
-                wave_points += 5
+                wave_points += UP_PUSH_LOCK_BONUS
             wave_clear |= cells
 
             extra = random_surrounding_clear(board, cells, limit=3)
             wave_clear |= extra
-            wave_points += len(extra)
+            wave_points += len(extra) * LOCK_EXTRA_CELL_POINTS
 
         cleared_now = clear_cells(board, wave_clear, visual_events)
         total_cleared += cleared_now
@@ -284,12 +300,12 @@ def apply_sum9_explosions(board, visual_events):
 
             if c + 1 < COLS and is_number(board[r][c + 1]) and v + board[r][c + 1] == 9:
                 to_clear.update({(r, c), (r, c + 1)})
-                points += 5
+                points += SUM9_PAIR_POINTS
                 explosions += 1
 
             if r + 1 < ROWS and is_number(board[r + 1][c]) and v + board[r + 1][c] == 9:
                 to_clear.update({(r, c), (r + 1, c)})
-                points += 5
+                points += SUM9_PAIR_POINTS
                 explosions += 1
 
     cleared = clear_cells(board, to_clear, visual_events)
@@ -308,7 +324,7 @@ def trigger_joker(board, target_r, target_c, visual_events):
     clear_set.update(around)
 
     cleared = clear_cells(board, clear_set, visual_events)
-    points = 7 + 2 * len(around)
+    points = JOKER_BASE_POINTS + JOKER_AROUND_POINTS * len(around)
     apply_gravity(board)
 
     return points, cleared, 1
@@ -323,7 +339,7 @@ def trigger_bomb(board, center_r, center_c, visual_events):
                 clear_set.add((rr, cc))
 
     cleared = clear_cells(board, clear_set, visual_events)
-    points = 10 + cleared
+    points = BOMB_BASE_POINTS + BOMB_PER_CELL_POINTS * cleared
     apply_gravity(board)
 
     return points, cleared, 1
@@ -350,7 +366,7 @@ def apply_up_push_if_needed(board, level, visual_events):
     collided_cells |= clear_extra
 
     cleared = clear_cells(board, collided_cells, visual_events)
-    points = 5 + len(clear_extra)
+    points = UP_PUSH_COLLISION_BASE + UP_PUSH_COLLISION_EXTRA * len(clear_extra)
     apply_gravity(board)
 
     lock_points, lock_cleared, lock_expl, lock_flag = apply_lock_explosions(board, visual_events, up_push_mode=True)
@@ -359,11 +375,11 @@ def apply_up_push_if_needed(board, level, visual_events):
 
 def combo_multiplier(explosion_count):
     if explosion_count >= 4:
-        return 2.0
+        return COMBO_MULT_FOUR_PLUS
     if explosion_count == 3:
-        return 1.5
+        return COMBO_MULT_THREE
     if explosion_count == 2:
-        return 1.2
+        return COMBO_MULT_TWO
     return 1.0
 
 
@@ -968,6 +984,8 @@ class VersusGame:
 
         self.phase = "player_input"
         self.game_over = False
+        self.game_winner = None
+        self.game_end_reason = ""
         self.last_input_time = time.time()
         self.last_idle_analysis = 0.0
         self.status = "Insan hamlesini bekliyor"
@@ -1103,31 +1121,17 @@ class VersusGame:
         if self.match_recorded:
             return
 
-        status = self.status.lower()
-        player_win = False
-        robot_win = False
-        is_draw = "berabere" in status
+        player_win = self.game_winner == "player"
+        robot_win = self.game_winner == "robot"
+        is_draw = self.game_winner == "draw"
 
-        if not is_draw:
-            if "insan" in status and "kaybetti" in status:
-                robot_win = True
-            elif "robot" in status and "kaybetti" in status:
+        if not (player_win or robot_win or is_draw):
+            if self.player_score > self.robot_score:
                 player_win = True
-            elif "insan" in status and "kazandi" in status:
-                player_win = True
-            elif "robot" in status and "kazandi" in status:
+            elif self.robot_score > self.player_score:
                 robot_win = True
-            elif "insan icin giris kolonu dolu" in status:
-                robot_win = True
-            elif "robot icin giris kolonu dolu" in status:
-                player_win = True
             else:
-                if self.player_score > self.robot_score:
-                    player_win = True
-                elif self.robot_score > self.player_score:
-                    robot_win = True
-                else:
-                    is_draw = True
+                is_draw = True
 
         self.profile["total_matches"] = int(self.profile.get("total_matches", 0)) + 1
         if player_win:
@@ -1153,6 +1157,18 @@ class VersusGame:
         else:
             result_text = "Mac sonucu kaydedildi: Berabere"
         self.push_reason(result_text, "system")
+
+    def _set_game_over(self, winner, reason):
+        self.game_over = True
+        self.game_winner = winner
+        self.game_end_reason = reason
+
+        if winner == "player":
+            self.status = f"Tebrikler {self.player_name} kazandi"
+        elif winner == "robot":
+            self.status = "Tebrikler Robot kazandi"
+        else:
+            self.status = "Mac berabere bitti"
 
     def on_quit(self, _event=None):
         self.robot_ai.save_memory()
@@ -1192,6 +1208,8 @@ class VersusGame:
 
         self.phase = "player_input"
         self.game_over = False
+        self.game_winner = None
+        self.game_end_reason = ""
         self.match_recorded = False
         self.last_input_time = time.time()
         self.last_idle_analysis = 0.0
@@ -1396,12 +1414,10 @@ class VersusGame:
         self.flash_robot = []
 
         if not self._can_place(self.player_board, self.player_col):
-            self.game_over = True
-            self.status = "Oyun bitti: insan icin giris kolonu dolu"
+            self._set_game_over("robot", "Insan icin giris kolonu dolu")
             return
         if not self._can_place(self.robot_board, self.robot_col):
-            self.game_over = True
-            self.status = "Oyun bitti: robot icin giris kolonu dolu"
+            self._set_game_over("player", "Robot icin giris kolonu dolu")
             return
 
         player_result = self._apply_piece(
@@ -1422,8 +1438,7 @@ class VersusGame:
         )
 
         if player_result is None or robot_result is None:
-            self.game_over = True
-            self.status = "Oyun bitti: hamle uygulanamadi"
+            self._set_game_over("draw", "Hamle uygulanamadi")
             return
 
         self.player_score += player_result["points"]
@@ -1524,28 +1539,22 @@ class VersusGame:
             player_top = board_touches_top(self.player_board)
             robot_top = board_touches_top(self.robot_board)
             if player_top and not robot_top:
-                self.game_over = True
-                self.status = "Oyun bitti: Insan ust satira ulasti ve kaybetti"
+                self._set_game_over("robot", "Insan ust satira ulasti ve kaybetti")
             elif robot_top and not player_top:
-                self.game_over = True
-                self.status = "Oyun bitti: Robot ust satira ulasti ve kaybetti"
+                self._set_game_over("player", "Robot ust satira ulasti ve kaybetti")
             elif player_top and robot_top:
-                self.game_over = True
-                self.status = "Oyun bitti: Iki taraf da ust satira ulasti (berabere)"
+                self._set_game_over("draw", "Iki taraf da ust satira ulasti")
 
             # Yeni kural 2: Ekranda 1 veya 0 tas kalan kazanir.
             player_pieces = piece_count(self.player_board)
             robot_pieces = piece_count(self.robot_board)
             if not self.game_over:
                 if player_pieces <= 1 and robot_pieces > 1:
-                    self.game_over = True
-                    self.status = "Oyun bitti: Insan tahtada 1/0 tasla kazandi"
+                    self._set_game_over("player", "Insan tahtada 1/0 tasla kazandi")
                 elif robot_pieces <= 1 and player_pieces > 1:
-                    self.game_over = True
-                    self.status = "Oyun bitti: Robot tahtada 1/0 tasla kazandi"
+                    self._set_game_over("robot", "Robot tahtada 1/0 tasla kazandi")
                 elif player_pieces <= 1 and robot_pieces <= 1:
-                    self.game_over = True
-                    self.status = "Oyun bitti: Iki taraf da 1/0 tasa indi (berabere)"
+                    self._set_game_over("draw", "Iki taraf da 1/0 tasa indi")
 
         self.turn += 1
         self.current_num = self.next_num
@@ -1710,7 +1719,7 @@ class VersusGame:
             bx1 = LEFT_X + 80
             by1 = TOP_Y + 210
             bx2 = right_x + BOARD_W - 80
-            by2 = by1 + 140
+            by2 = by1 + 175
             self.canvas.create_rectangle(bx1, by1, bx2, by2, fill="#111827", outline="#f87171", width=2)
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 38, text="GAME OVER", fill="#fca5a5", font=("Segoe UI", 24, "bold"))
             self.canvas.create_text(
@@ -1720,8 +1729,20 @@ class VersusGame:
                 fill="#e5e7eb",
                 font=("Segoe UI", 13, "bold"),
             )
-            self.canvas.create_text((bx1 + bx2) // 2, by1 + 108, text=self.status, fill="#cbd5e1", font=("Segoe UI", 11))
-            self.canvas.create_text((bx1 + bx2) // 2, by1 + 126, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
+            self.canvas.create_text((bx1 + bx2) // 2, by1 + 108, text=self.status, fill="#86efac", font=("Segoe UI", 12, "bold"))
+            self.canvas.create_text((bx1 + bx2) // 2, by1 + 128, text=f"Neden: {self.game_end_reason}", fill="#cbd5e1", font=("Segoe UI", 10))
+            if self.game_winner in ("player", "robot"):
+                winner_score = self.player_score if self.game_winner == "player" else self.robot_score
+                loser_score = self.robot_score if self.game_winner == "player" else self.player_score
+                if winner_score < loser_score:
+                    self.canvas.create_text(
+                        (bx1 + bx2) // 2,
+                        by1 + 146,
+                        text="Not: Kazanan bitis kuralina gore belirlenir, yalnizca skora gore degil.",
+                        fill="#fcd34d",
+                        font=("Segoe UI", 10, "bold"),
+                    )
+            self.canvas.create_text((bx1 + bx2) // 2, by1 + 162, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
 
         feed_x1 = BOARD_PADDING
         feed_y1 = max(TOP_Y + BOARD_H + 10, info_bottom + 14)
