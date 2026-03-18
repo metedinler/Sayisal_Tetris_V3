@@ -1650,36 +1650,42 @@ class VersusGame:
             flash_style="robot",
         )
 
+        # Orta panel: kontroller + tur/seviye + anlik sayi kutulari
+        mid_x1 = LEFT_X + BOARD_W + 16
+        mid_x2 = right_x - 16
+        if mid_x2 - mid_x1 < 170:
+            mid_x2 = mid_x1 + 170
+        mid_y1 = TOP_Y
+        mid_y2 = TOP_Y + 265
+        mid_cx = (mid_x1 + mid_x2) // 2
+
+        self.canvas.create_rectangle(mid_x1, mid_y1, mid_x2, mid_y2, outline="#475569", width=2, fill="#111827")
+        self.canvas.create_text(mid_cx, mid_y1 + 14, text="Kontroller", fill="#e2e8f0", font=("Segoe UI", 11, "bold"))
+        self.canvas.create_text(mid_cx, mid_y1 + 36, text="A/D: Kaydir  |  S: Hizli  |  Space: Normal", fill="#cbd5e1", font=("Segoe UI", 9))
+        self.canvas.create_text(mid_cx, mid_y1 + 54, text="B: Bekleme Modu  |  R: Yeni Mac  |  Q/Esc: Cikis", fill="#cbd5e1", font=("Segoe UI", 9))
+
+        self.canvas.create_text(mid_cx, mid_y1 + 84, text=f"Tur: {self.turn}   Seviye: {self.level}", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
+        self.canvas.create_text(mid_cx, mid_y1 + 106, text=f"{self.player_name}: {self.player_score}   |   Robot: {self.robot_score}", fill="#e5e7eb", font=("Segoe UI", 10, "bold"))
+
+        self.canvas.create_text(mid_x1 + 20, mid_y1 + 132, anchor="nw", text="Gelen", fill="#cbd5e1", font=("Segoe UI", 10, "bold"))
+        cfill, clabel = color_for(self.current_num)
+        self.canvas.create_rectangle(mid_x1 + 14, mid_y1 + 150, mid_x1 + 14 + CELL * 2, mid_y1 + 150 + CELL * 2, fill=cfill, outline="#334155", width=2)
+        if clabel:
+            self.canvas.create_text(mid_x1 + 14 + CELL, mid_y1 + 150 + CELL, text=clabel, fill="#f8fafc", font=("Segoe UI", 14, "bold"))
+
+        self.canvas.create_text(mid_x2 - 20 - CELL * 2, mid_y1 + 132, anchor="nw", text="Sonraki", fill="#cbd5e1", font=("Segoe UI", 10, "bold"))
+        nfill, nlabel = color_for(self.next_num)
+        self.canvas.create_rectangle(mid_x2 - 14 - CELL * 2, mid_y1 + 150, mid_x2 - 14, mid_y1 + 150 + CELL * 2, fill=nfill, outline="#334155", width=2)
+        if nlabel:
+            self.canvas.create_text(mid_x2 - 14 - CELL, mid_y1 + 150 + CELL, text=nlabel, fill="#f8fafc", font=("Segoe UI", 14, "bold"))
+
+        self.canvas.create_text(mid_cx, mid_y1 + 230, text=f"Durum: {self.status}", fill="#93c5fd", font=("Segoe UI", 9, "bold"), width=max(130, mid_x2 - mid_x1 - 16))
+
         nx = panel_x
         ny = TOP_Y
 
-        self.canvas.create_text(nx, ny, anchor="nw", text=f"Tur: {self.turn}", fill="#cbd5e1", font=("Segoe UI", 13, "bold"))
-        self.canvas.create_text(nx, ny + 28, anchor="nw", text=f"Seviye: {self.level}", fill="#cbd5e1", font=("Segoe UI", 12))
-
-        self.canvas.create_text(nx, ny + 58, anchor="nw", text=f"{self.player_name} Skor: {self.player_score}", fill="#86efac", font=("Segoe UI", 12, "bold"))
-        self.canvas.create_text(nx, ny + 84, anchor="nw", text=f"Robot Skor: {self.robot_score}", fill="#fca5a5", font=("Segoe UI", 12, "bold"))
-
-        self.canvas.create_text(nx, ny + 125, anchor="nw", text="Gelen Sayi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
-        cfill, clabel = color_for(self.current_num)
-        self.canvas.create_rectangle(nx, ny + 148, nx + CELL * 2, ny + 148 + CELL * 2, fill=cfill, outline="#334155", width=2)
-        if clabel:
-            self.canvas.create_text(nx + CELL, ny + 148 + CELL, text=clabel, fill="#f8fafc", font=("Segoe UI", 15, "bold"))
-
-        self.canvas.create_text(nx + 90, ny + 125, anchor="nw", text="Sonraki", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
-        nfill, nlabel = color_for(self.next_num)
-        self.canvas.create_rectangle(nx + 90, ny + 148, nx + 90 + CELL * 2, ny + 148 + CELL * 2, fill=nfill, outline="#334155", width=2)
-        if nlabel:
-            self.canvas.create_text(nx + 90 + CELL, ny + 148 + CELL, text=nlabel, fill="#f8fafc", font=("Segoe UI", 15, "bold"))
-
         lines = [
-            "Kontroller",
-            "A / Sol Ok   : Sola kaydir",
-            "D / Sag Ok   : Saga kaydir",
-            "Space/Enter  : Yavas birak",
-            "S / Asagi Ok : Hizli birak",
-            "B            : Bekleme modu ac/kapat",
-            "R            : Yeni mac baslat",
-            "Q / Esc      : Cikis",
+            "Profil ve Robot Durumu",
             "",
             f"Oyuncu: {self.player_name}",
             f"Toplam mac: {int(self.profile.get('total_matches', 0))}",
@@ -1691,14 +1697,15 @@ class VersusGame:
             f"En yuksek seviye: {int(self.profile.get('best_level', 1))}",
             "",
             f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
+            f"Strateji Slotlari: ACIK {self.robot_ai.strategy_engine.active_count()} / KAPALI {max(0, 30 - self.robot_ai.strategy_engine.active_count())}",
             f"Oneri motoru sayisi: {self.robot_ai.strategy_engine.proposal_engine_count()}",
+            f"Oneri Kapisi: {'ACIK' if self.robot_meta and self.robot_meta.get('proposal') else 'KAPALI'}",
             f"Model guncelleme: {self.robot_ai.total_updates}",
             f"Son egitim hatasi: {self.robot_ai.last_train_error:.4f}",
             f"Bekleme modu: {'ACIK' if self.wait_mode_var.get() else 'KAPALI'}",
             f"Akis filtresi: {self.feed_filter_var.get()}",
             "",
             f"Son onerisi: {self.last_proposal_banner}",
-            f"Durum: {self.status}",
             f"Log dosyasi: {os.path.basename(self.logger.path)}",
         ]
 
@@ -1744,11 +1751,11 @@ class VersusGame:
                     )
             self.canvas.create_text((bx1 + bx2) // 2, by1 + 162, text="R tusu veya Ozellikler > Yeniden Baslat ile yeni maca gec", fill="#93c5fd", font=("Segoe UI", 10, "bold"))
 
-        feed_x1 = BOARD_PADDING
-        feed_y1 = max(TOP_Y + BOARD_H + 10, info_bottom + 14)
-        feed_x2 = min(win_w - 20, panel_x - 24)
-        if feed_x2 - feed_x1 < 280:
-            feed_x2 = feed_x1 + 280
+        feed_x1 = LEFT_X + 140
+        feed_y1 = max(TOP_Y + BOARD_H - 78, info_bottom + 8)
+        feed_x2 = min(win_w - 28, panel_x - 70)
+        if feed_x2 - feed_x1 < 240:
+            feed_x2 = feed_x1 + 240
         feed_y2 = win_h - 20
         if feed_y2 - feed_y1 < 90:
             feed_y1 = feed_y2 - 90

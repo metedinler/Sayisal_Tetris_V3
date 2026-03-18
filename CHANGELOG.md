@@ -31,3 +31,10 @@ Kurallar:
 - Kazananin skordan degil bitis kuralindan gelebilecegi durumlar icin aciklayici not eklendi.
 - Coklu patlama puanlamasi merkezi sabitlere tasindi (sum9/kilit/joker/bomba/combo carpani).
 - Puanlama sabitleri degistiginde robotun online + replay ile yeniden uyumlanacagi dokumante edildi.
+
+## 2026-03-18 - Arayuz Yerlesim Duzeni
+- Robot akil yurutme akisi paneli saga dogru daraltildi.
+- Ayni panel daha yukari konuma cekildi.
+- Tur/seviye + gelen/sonraki sayi bloklari iki tahta arasindaki orta panele tasindi.
+- Kontroller basligi orta panelde en uste alindi.
+- Robot strateji gorunurlugune `ACIK/KAPALI` durum metinleri eklendi.

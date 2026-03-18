@@ -179,3 +179,19 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - End-of-match now shows explicit winner text and reason line.
 - Winner may differ from score leader because rule-based end conditions have priority.
 - Explosion scoring constants are centralized for easier tuning; changing them will cause the learner to adapt again over time.
+
+## Arayuz Yerlesim Eki (Append-Only)
+
+### Son guncelleme (TR)
+- Robot Akil Yurutme Akisi paneli saga dogru daraltildi ve yukariya cekildi.
+- Tur/seviye/anlik sayi (Gelen/Sonraki) gostergeleri insan ve robot tahtalari arasindaki orta panele alindi.
+- Kontroller metni orta panelde en ustte konumlandirildi.
+- Robot strateji durumu ekranda acik/kapali olarak gosterilir:
+	- Strateji slotlari: `ACIK x / KAPALI y`
+	- Oneri Kapisi: `ACIK` veya `KAPALI`
+
+### Latest layout update (EN)
+- Reasoning feed panel was narrowed toward the right and moved upward.
+- Turn/level/current-next number indicators were moved into a centered middle panel between boards.
+- Controls header is now placed at the top of that middle panel.
+- Robot strategy usage visibility now includes OPEN/CLOSED style labels on screen.

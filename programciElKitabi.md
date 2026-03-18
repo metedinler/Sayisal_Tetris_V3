@@ -324,3 +324,19 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 - Puan sabitleri degistiginde odul fonksiyonu da degismis olur.
 - Robot online ogrenme ve replay analizi ile yeni odul dagilimina yeniden adapte olur.
 - Erken oyunda top-2 kesif mekanizmasi hizli yeniden uyumlanmayi destekler.
+
+## 15. Arayuz Yerlesim Guncellemesi (Append-Only)
+
+### 15.1 Orta bilgi paneli
+- Tur/seviye ve gelen-sonraki sayi kutulari sag panelden alinarak iki tahta arasindaki orta bolgeye tasindi.
+- Kontroller basligi orta bolumde en ust satira yerlestirildi.
+
+### 15.2 Akil yurutme paneli konumu
+- Robot Akil Yurutme Akisi paneli saga dogru daraltilmis ve dikeyde yukari alinmistir.
+- Amaç: ust uste binmeyi azaltmak ve alt panelin daha erken gorunmesini saglamak.
+
+### 15.3 Strateji acik/kapali gorunurlugu
+- Ekranda su alanlar eklendi:
+	- `Strateji Slotlari: ACIK n / KAPALI m`
+	- `Oneri Kapisi: ACIK/KAPALI`
+- Bu alanlar robotun o anki strateji kullanim durumunu gozlenebilir yapar.
