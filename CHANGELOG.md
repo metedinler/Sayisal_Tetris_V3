@@ -58,3 +58,9 @@ Kurallar:
 - SID parca akisina parca basi sure limiti eklendi; sure dolunca otomatik olarak bir sonraki parcaya gecis saglandi.
 - Robot Akil Yurutme Akisi paneli iki sayi yuksekligi kadar daha asagi alinip panel gorunen alani kucultuldu.
 - Guncel kod ile EXE yeniden derlendi.
+
+## 2026-03-18 - SID Parca Sonu Gecis Duzeltmesi
+- 25 saniye zorunlu parca degistirme kaldirildi.
+- SID gecisi artik sadece calan parcasi dogal olarak bittiginde yapilir.
+- Oynatici cagrisi `-os` secenegi ile tek parca davranisina alindi.
+- EXE yeniden derlendi ve dist artefacti olusturuldu.

@@ -382,3 +382,8 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 ### 17.3 Robot bildirim paneli boyutu
 - `Robot Akil Yurutme Akisi` panelinin baslangic Y konumu iki sayi yuksekligi kadar daha asagi alinmistir.
 - Boylece panelin gorunen yuksekligi azaltilarak ust panelle cakisma riski dusurulmustur.
+
+### 17.4 SID parca sonu gecis duzeltmesi
+- 25 saniye zorunlu parca degistirme davranisi kaldirildi.
+- SID gecisi yalnizca aktif parca dogal olarak bittiginde tetiklenir.
+- Oynatici cagrisi tek-parca davranisi icin `-os` secenegi ile yapilir.

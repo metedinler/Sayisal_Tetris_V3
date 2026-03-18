@@ -3,7 +3,6 @@ import os
 import shutil
 import subprocess
 import atexit
-import time
 from datetime import datetime
 
 
@@ -21,9 +20,6 @@ class SidMusicManager:
         self.current_index = -1
         self.current_track = ""
         self.proc = None
-        self.track_started_at = 0.0
-        # SID tunes may loop forever. Keep tracks rotating to preserve playlist flow.
-        self.max_track_seconds = 25.0
         self.player_path = self._resolve_player_path()
         self.available = self.player_path is not None
         atexit.register(self.stop)
@@ -132,7 +128,7 @@ class SidMusicManager:
                 startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
             self.proc = subprocess.Popen(
-                [self.player_path, "-q", f"-t{int(self.max_track_seconds)}", path],
+                [self.player_path, "-q", "-os", path],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -141,7 +137,6 @@ class SidMusicManager:
             )
             self.current_index = index
             self.current_track = self.playlist[index]
-            self.track_started_at = time.time()
             self._save_state(self.current_track, self.current_index)
             return True
         except Exception:
@@ -154,10 +149,6 @@ class SidMusicManager:
         if self.proc is None:
             return
         if self.proc.poll() is not None:
-            self.play_index((self.current_index + 1) % len(self.playlist))
-            return
-        # Some SID tracks can run forever; rotate to next track after a safe max duration.
-        if self.track_started_at > 0 and (time.time() - self.track_started_at) >= self.max_track_seconds:
             self.play_index((self.current_index + 1) % len(self.playlist))
 
     def stop(self):
@@ -188,5 +179,4 @@ class SidMusicManager:
                 )
             except Exception:
                 pass
-        self.track_started_at = 0.0
         self.proc = None

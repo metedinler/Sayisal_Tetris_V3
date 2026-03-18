@@ -235,3 +235,7 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - On game exit, SID process tree is force-closed to prevent lingering background music.
 - SID playback now rotates to the next track automatically with a bounded per-track duration.
 - Robot reasoning feed panel was lowered further by about two-number height and its visible area reduced.
+
+### 2026-03-18 - SID transition adjustment (TR/EN)
+- TR: 25 saniye zorunlu parca gecisi kaldirildi. Gecis artik sadece SID parcasi dogal olarak bittiginde yapilir.
+- EN: The forced 25-second track switch was removed. Transition now occurs only when the current SID track ends naturally.
