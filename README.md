@@ -46,6 +46,14 @@ veya
 py tetris_v3_windows_ai.py
 ```
 
+### Deneme Akisi
+1. Oyunu acin.
+2. `A` / `D` ile konumu secin.
+3. `S` ile hizli, `Space` ile normal birakma yapin.
+4. `B` ile bekleme modunu acip 5 saniye bekleyin.
+5. Alt panelde robot akil yurutme akisini izleyin.
+6. `Ozellikler -> Akil Yurutme Filtresi` ile filtre deneyin.
+
 ### Dosya Yapisi
 - `tetris_v3_windows_ai.py`: Ana oyun
 - `run_v3_windows.bat`: Baslatici
@@ -92,3 +100,11 @@ or
 ```bat
 py tetris_v3_windows_ai.py
 ```
+
+### Quick Test Flow
+1. Launch the game.
+2. Move with `A` / `D`.
+3. Drop with `S` (fast) or `Space` (normal).
+4. Toggle wait mode with `B` and stay idle for 5 seconds.
+5. Watch the robot reasoning stream in the bottom panel.
+6. Test filters from `Features -> Reasoning Filter`.

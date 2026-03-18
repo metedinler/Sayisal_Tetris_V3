@@ -809,6 +809,7 @@ class VersusGame:
         self.root.resizable(False, False)
 
         self.wait_mode_var = tk.BooleanVar(value=False)
+        self.feed_filter_var = tk.StringVar(value="all")
         self._build_menu()
 
         self.canvas = tk.Canvas(root, width=WIN_W, height=WIN_H, bg="#0b1220", highlightthickness=0)
@@ -866,7 +867,7 @@ class VersusGame:
         self.root.bind("<Q>", self.on_quit)
         self.root.bind("<Escape>", self.on_quit)
 
-        self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.")
+        self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.", "system")
         self.prepare_robot_move()
         self.tick()
 
@@ -879,6 +880,12 @@ class VersusGame:
             variable=self.wait_mode_var,
             command=self.toggle_wait_mode,
         )
+        menu_filter = tk.Menu(menu_features, tearoff=0)
+        menu_filter.add_radiobutton(label="Tum Akis", variable=self.feed_filter_var, value="all", command=self.set_feed_filter)
+        menu_filter.add_radiobutton(label="Sadece Oneriler", variable=self.feed_filter_var, value="proposal", command=self.set_feed_filter)
+        menu_filter.add_radiobutton(label="Sadece Reddedilen", variable=self.feed_filter_var, value="rejected", command=self.set_feed_filter)
+        menu_filter.add_radiobutton(label="Sadece Uygulanan", variable=self.feed_filter_var, value="applied", command=self.set_feed_filter)
+        menu_features.add_cascade(label="Akil Yurutme Filtresi", menu=menu_filter)
         menu_features.add_command(label="Simdi Log Analizi", command=self.manual_idle_analysis)
         menu_features.add_separator()
         menu_features.add_command(label="Cikis", command=self.on_quit)
@@ -901,18 +908,41 @@ class VersusGame:
             "- Benzersiz log kaydı ve bekleme analiz modu",
         )
 
-    def push_reason(self, text):
+    def push_reason(self, text, reason_type="general"):
         ts = datetime.now().strftime("%H:%M:%S")
-        self.reason_feed.append(f"[{ts}] {text}")
+        self.reason_feed.append({"time": ts, "text": text, "type": reason_type})
+
+    def set_feed_filter(self):
+        choice = self.feed_filter_var.get()
+        title = {
+            "all": "Tum akis",
+            "proposal": "Sadece oneriler",
+            "rejected": "Sadece reddedilen oneriler",
+            "applied": "Sadece uygulanan oneriler",
+        }.get(choice, "Tum akis")
+        self.status = f"Akil yurutme filtresi: {title}"
+
+    def get_filtered_reason_feed(self):
+        mode = self.feed_filter_var.get()
+        items = list(self.reason_feed)
+        if mode == "all":
+            return items
+        if mode == "proposal":
+            return [x for x in items if x.get("type") in ("proposal", "applied", "rejected")]
+        if mode == "rejected":
+            return [x for x in items if x.get("type") == "rejected"]
+        if mode == "applied":
+            return [x for x in items if x.get("type") == "applied"]
+        return items
 
     def toggle_wait_mode(self):
         enabled = self.wait_mode_var.get()
         if enabled:
             self.status = "Bekleme modu acik: Bosta analiz var, otomatik birakma yok"
-            self.push_reason("Bekleme modu açıldı. Bosta sadece analiz yapilacak.")
+            self.push_reason("Bekleme modu açıldı. Bosta sadece analiz yapilacak.", "system")
         else:
             self.status = "Bekleme modu kapali: 5s sonra analiz + otomatik hamle"
-            self.push_reason("Bekleme modu kapatıldı. Eski otomatik akışa dönüldü.")
+            self.push_reason("Bekleme modu kapatıldı. Eski otomatik akışa dönüldü.", "system")
 
     def on_toggle_wait_mode(self, _event=None):
         self.wait_mode_var.set(not self.wait_mode_var.get())
@@ -921,7 +951,7 @@ class VersusGame:
     def manual_idle_analysis(self):
         trained, reward = self.robot_ai.analyze_previous_logs()
         self.status = f"Manuel analiz: {trained} hamle tekrarlandi, toplam odul {int(reward)}"
-        self.push_reason(self.status)
+        self.push_reason(self.status, "analysis")
 
     def on_quit(self, _event=None):
         self.robot_ai.save_memory()
@@ -1069,7 +1099,8 @@ class VersusGame:
 
         if meta:
             self.push_reason(
-                f"Robot secimi: sutun {self.robot_col}, strateji {meta.get('strategy', 'N/A')}, karar {meta.get('decision', 'N/A')}, risk {meta.get('risk', 0)}"
+                f"Robot secimi: sutun {self.robot_col}, strateji {meta.get('strategy', 'N/A')}, karar {meta.get('decision', 'N/A')}, risk {meta.get('risk', 0)}",
+                "decision",
             )
 
     def perform_turn(self, human_fast=False, auto_reason=None):
@@ -1186,12 +1217,15 @@ class VersusGame:
         self.logger.write(robot_log)
 
         self.push_reason(
-            f"Tur {self.turn}: Insan +{player_result['points']} puan, Robot +{robot_result['points']} puan, robot karar={robot_extra.get('proposal_decision', 'N/A')}"
+            f"Tur {self.turn}: Insan +{player_result['points']} puan, Robot +{robot_result['points']} puan, robot karar={robot_extra.get('proposal_decision', 'N/A')}",
+            "result",
         )
         if self.robot_meta and self.robot_meta.get("proposal"):
             p = self.robot_meta["proposal"]
+            decision_type = "applied" if self.robot_meta.get("used_proposal") else "rejected"
             self.push_reason(
-                f"Yeni strateji onerisi goruldu: {p['candidate']['name']} ({p.get('engine_name', 'unknown')}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}"
+                f"Yeni strateji onerisi goruldu: {p['candidate']['name']} ({p.get('engine_name', 'unknown')}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}",
+                decision_type,
             )
 
         self.flash_until = time.time() + 0.24
@@ -1314,6 +1348,7 @@ class VersusGame:
             f"Model guncelleme: {self.robot_ai.total_updates}",
             f"Son egitim hatasi: {self.robot_ai.last_train_error:.4f}",
             f"Bekleme modu: {'ACIK' if self.wait_mode_var.get() else 'KAPALI'}",
+            f"Akis filtresi: {self.feed_filter_var.get()}",
             "",
             f"Son onerisi: {self.last_proposal_banner}",
             f"Durum: {self.status}",
@@ -1378,7 +1413,9 @@ class VersusGame:
         self.canvas.create_rectangle(feed_x1, feed_y1, feed_x2, feed_y2, outline="#475569", width=2, fill="#0f172a")
         self.canvas.create_text(feed_x1 + 10, feed_y1 + 8, anchor="nw", text="Robot Akil Yurutme Akisi", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
 
-        for i, line in enumerate(list(self.reason_feed)[-8:]):
+        filtered_feed = self.get_filtered_reason_feed()
+        for i, item in enumerate(filtered_feed[-8:]):
+            line = f"[{item['time']}] ({item['type']}) {item['text']}"
             self.canvas.create_text(
                 feed_x1 + 10,
                 feed_y1 + 32 + i * 19,
@@ -1402,7 +1439,7 @@ class VersusGame:
         trained, reward = self.robot_ai.analyze_previous_logs()
         self.last_idle_analysis = now
         self.status = f"Boslukta analiz: {trained} hamle tekrarlandi, toplam odul {int(reward)}"
-        self.push_reason(self.status)
+        self.push_reason(self.status, "analysis")
 
         if not self.wait_mode_var.get():
             self.perform_turn(human_fast=False, auto_reason="5s_idle_auto_drop")
