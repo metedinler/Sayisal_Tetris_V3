@@ -73,16 +73,54 @@ Yapi:
 - Her strateji, heuristik ozellikleri agirlikli toplayarak skor üretir.
 - Strateji skorlari odul geri beslemesi ile guncellenir (exponential moving update).
 
+Standart 10 strateji:
+1. safe_stack: Guvenli yigma ve tasma riskini azaltma odakli.
+2. max_potential: Patlama olasiligini yuksek tutma odakli.
+3. balance: Risk ve puan dengesini orta noktada tutar.
+4. combo_hunter: Zincirleme (combo) firsatlarini kovalar.
+5. low_risk: Dusuk riskli sutunlari onceliklendirir.
+6. center_control: Merkez sutun dengesini korumaya calisir.
+7. edge_pressure: Kenar sutunlarda kontrollu baski kurar.
+8. lock_builder: Kilit patlama kurulumlarini arttirmaya odaklanir.
+9. sum9_focus: Toplam 9 patlamalarini onceliklendirir.
+10. survival_mix: Tahta dolulugu arttiginda hayatta kalma agirlikli davranir.
+
 Oneri Motorlari:
 - 5 farkli onerisi motoru vardir.
 - Her motor, baz stratejiyi farkli jitter ve focus katsayilari ile mutasyona ugratarak aday strateji üretir.
 - Oneri sonucunda aday strateji + hedef sutun + guven degeri uretilir.
+
+Oneri motoru yeni stratejiyi nasil gelistirir:
+1. Once en iyi performans gosteren baz strateji secilir.
+2. Secilen baz stratejinin agirliklari uzerine kucuk oynama (sapma (jitter)) uygulanir.
+3. Motorun odagina gore agirliklar odak carpani (focus factor) ile guclendirilir veya zayiflatilir.
+4. Ortaya cikan yeni agirlik seti aday strateji olarak adlandirilir.
+5. Aday strateji tum uygun sutunlarda denenir ve tahmini hamle skoru hesaplanir.
+6. En iyi sutun + guven puani ile robotun karar gecidine gonderilir.
 
 Karar Gecidi (Decision Gate):
 - Oneri skoru ile mevcut skor farki hesaplanir.
 - Riske bagli esik degeri ile karsilastirilir.
 - Guven + skor kazanci + risk kosullari saglanirsa onerilen strateji uygulanir.
 - Saglanmazsa onerisi reddedilir.
+
+Robot kararlarini nasil alir:
+1. Her sutun icin ozellik cikartimi (feature extraction) yapar.
+2. Ogrenme modeli her sutun icin hamle degeri uretir.
+3. Strateji motoru ayni sutunlar icin kural tabanli skor uretir.
+4. Iki skor birlestirilerek tek hamle puani elde edilir.
+5. Kesif-somuru dengesi (exploration-exploitation) ile bazen yeni hamle dener, bazen en iyi hamleyi secer.
+6. Oneri motorundan gelen yeni strateji varsa karar gecidi ile karsilastirma yapar.
+7. Son karari verir, hamleyi uygular, odulu alir ve modeli gunceller.
+
+Robot onerilen stratejiyi nasil degerlendirir:
+1. Mevcut stratejinin puani baz puan olarak tutulur.
+2. Onerilen strateji ayni durumda yeniden puanlanir.
+3. Iki puan farki net kazanc olarak hesaplanir.
+4. Durum riski kullanilarak dinamik esik belirlenir.
+5. Oneri guveni, net kazanc ve risk birlikte kosul denetiminden gecirilir.
+6. Kosullar gecerse "uygulandi", gecmezse "reddedildi" olarak kayitlanir.
+7. Sonuc hem ekranda hem log kaydinda gorulecek sekilde tutulur.
 
 ## 5. Karar Agaci Mantigi
 Robot karar agaci pratikte su sekilde isler:
@@ -155,7 +193,68 @@ Bu sayede robotun canli calismasi ve karar mekanizmasi gozle gorulur hale gelir.
 - Model kaydi her tur sonu yapilarak olasi kapanmalarda veri kaybi azaltilir.
 
 ## 11. Gelistirme Onerileri
-- Ogrenme modelini hedef ag (target network) ile stabilize etmek
-- Strateji havuzu budama/promotion mekanizmasi eklemek
-- Log replay'i mini-batch ve onceliklendirmeli ornekleme ile guclendirmek
-- Deterministik test senaryolari icin seed sabitleme modu eklemek
+### 11.1 Ogrenme modelini hedef ag (target network) ile stabilize etmek
+Amac:
+- Ogrenme adimlari arasinda ani yon degisimi sorununu azaltmak.
+
+Neden gerekli:
+- Ayni model hem karar verip hem kendini hemen guncellediginde hedef deger oynak olabilir.
+- Bu durum ogrenmenin dalgali (unstable) ilerlemesine neden olur.
+
+Onerilen yontem:
+1. Iki ayri model tut: ana ag (online network) ve hedef ag (target network).
+2. Karar verirken ana ag kullan.
+3. Egitim hedefi hesaplarken hedef ag kullan.
+4. Belirli aralikla yavas kopyalama (soft update) veya tam kopyalama (hard update) yap.
+
+Beklenen sonuc:
+- Daha duzgun kayip egrisi (loss curve), daha tutarli hamle kalitesi.
+
+### 11.2 Strateji havuzu budama/yukseltme (pruning/promotion) mekanizmasi eklemek
+Amac:
+- Strateji havuzunun kontrolsuz buyuyup kaliteyi dusurmesini engellemek.
+
+Neden gerekli:
+- Her yeni oneri uzun vadede faydali olmayabilir.
+- Dusuk kaliteli stratejiler karar alanini gereksiz sisirir.
+
+Onerilen yontem:
+1. Her strateji icin basari gostergesi (performance score) tut.
+2. Alt esigin altinda kalanlari buda (pruning).
+3. Ust esigi gecenleri ana havuza yukselterek terfi ettir (promotion).
+4. Havuz boyutu ust limiti koy ve periyodik temizlik calistir.
+
+Beklenen sonuc:
+- Daha temiz strateji havuzu, daha hizli ve daha isabetli karar.
+
+### 11.3 Log replay'i mini-grup (mini-batch) ve onceliklendirmeli ornekleme (prioritized sampling) ile guclendirmek
+Amac:
+- Gecmis deneyimlerden daha verimli ogrenmek.
+
+Neden gerekli:
+- Tum kayitlar esit degerde degildir; bazi hamleler daha ogreticidir.
+
+Onerilen yontem:
+1. Tek tek yerine mini-grup (mini-batch) halinde egitim yap.
+2. Hata buyuklugune gore ornek onceligi (priority) belirle.
+3. Onceligi yuksek kayitlardan daha sik ogren.
+4. Sapma duzeltmesi (importance correction) ile dengeyi koru.
+
+Beklenen sonuc:
+- Ayni surede daha yuksek ogrenme verimi ve daha hizli adaptasyon.
+
+### 11.4 Deterministik test senaryolari icin tohum (seed) sabitleme modu eklemek
+Amac:
+- Testleri tekrar edilebilir (reproducible) hale getirmek.
+
+Neden gerekli:
+- Rastgelelik nedeniyle ayni testte farkli sonuclar alinabilir.
+
+Onerilen yontem:
+1. Baslangicta rastgelelik tohumu (random seed) sabitleme secenegi ekle.
+2. Test modunda sayi uretimi, oneriler ve karar adimlarini ayni seed ile calistir.
+3. Loglara seed degerini yaz.
+4. Hata tekrari icin "seed ile tekrar calistir" komutu sagla.
+
+Beklenen sonuc:
+- Hata ayiklama (debugging) ve karsilastirma testlerinde yuksek guvenilirlik.
