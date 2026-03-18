@@ -11,6 +11,7 @@ Oyun pencereli (Windows GUI) calisir.
 - Buyuk tahta: 18x8 (onceki Windows oyunu ile ayni boyut)
 - Insan ve robot icin iki ayri tahta
 - Ayni sayi akisi: her turda her ikisi de ayni sayiyi alir
+- Sayi araligi: `0-9` (0 dahil)
 - Kurallar: sum-9 patlama, kilit patlama, joker, bomba, combo, yukari itme
 - Patlama gorsel efekti
 - Robot online ogrenir ve onceki ogrendiklerini kaydeder
@@ -31,6 +32,12 @@ Oyun pencereli (Windows GUI) calisir.
 - `S` veya `Asagi Ok`: hizli birak
 - `B`: bekleme modu ac/kapat
 - `Q` veya `Esc`: cikis
+
+### Oyun Sonu Kurallari
+- Ekranin en ust satirina ilk ulasan kaybeder.
+- Tahtasinda 1 veya 0 tas kalan taraf kazanir.
+- Iki taraf ayni anda ust satira ulasirsa berabere olur.
+- Iki taraf ayni anda 1/0 tasa inerse berabere olur.
 
 ### Menu
 - `Ozellikler` -> `Bekleme Modu (B)`
@@ -71,6 +78,7 @@ The game runs in a Windows GUI window.
 - Large board: 18x8 (same size as previous Windows version)
 - Separate boards for human and robot
 - Same number stream for both players each turn
+- Number range: `0-9` (including 0)
 - Rules: sum-9 explosion, lock explosion, joker, bomb, combo, upward push
 - Visual explosion effect
 - Robot learns online and persists memory across sessions
@@ -91,6 +99,12 @@ The game runs in a Windows GUI window.
 - `S` or `Down`: fast drop
 - `B`: toggle wait mode
 - `Q` or `Esc`: quit
+
+### End Conditions
+- The side that reaches the top row first loses.
+- The side that remains with 1 or 0 pieces on its board wins.
+- If both reach the top row simultaneously, the match is a draw.
+- If both reach 1/0 pieces simultaneously, the match is a draw.
 
 ### Run
 ```bat

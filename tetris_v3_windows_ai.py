@@ -56,6 +56,17 @@ def board_full(board):
     return True
 
 
+def board_touches_top(board):
+    for c in range(COLS):
+        if board[0][c] is not EMPTY:
+            return True
+    return False
+
+
+def piece_count(board):
+    return sum(1 for r in range(ROWS) for c in range(COLS) if board[r][c] is not EMPTY)
+
+
 def is_number(v):
     return isinstance(v, int) and 0 <= v <= 9
 
@@ -77,7 +88,7 @@ def spawn_value(level):
         return "J"
     if level >= 9 and random.random() < 0.10:
         return "L"
-    return random.randint(1, 9)
+    return random.randint(0, 9)
 
 
 def color_for(value):
@@ -1230,13 +1241,32 @@ class VersusGame:
 
         self.flash_until = time.time() + 0.24
 
-        if board_full(self.player_board) or board_full(self.robot_board):
+        # Yeni kural 1: Ekranin en ustune ilk ulasan kaybeder.
+        player_top = board_touches_top(self.player_board)
+        robot_top = board_touches_top(self.robot_board)
+        if player_top and not robot_top:
             self.game_over = True
-            self.status = "Tahtalardan biri doldu"
+            self.status = "Oyun bitti: Insan ust satira ulasti ve kaybetti"
+        elif robot_top and not player_top:
+            self.game_over = True
+            self.status = "Oyun bitti: Robot ust satira ulasti ve kaybetti"
+        elif player_top and robot_top:
+            self.game_over = True
+            self.status = "Oyun bitti: Iki taraf da ust satira ulasti (berabere)"
 
-        if self.turn >= MAX_TURNS:
-            self.game_over = True
-            self.status = "Maksimum tur sayisina ulasildi"
+        # Yeni kural 2: Ekranda 1 veya 0 tas kalan kazanir.
+        player_pieces = piece_count(self.player_board)
+        robot_pieces = piece_count(self.robot_board)
+        if not self.game_over:
+            if player_pieces <= 1 and robot_pieces > 1:
+                self.game_over = True
+                self.status = "Oyun bitti: Insan tahtada 1/0 tasla kazandi"
+            elif robot_pieces <= 1 and player_pieces > 1:
+                self.game_over = True
+                self.status = "Oyun bitti: Robot tahtada 1/0 tasla kazandi"
+            elif player_pieces <= 1 and robot_pieces <= 1:
+                self.game_over = True
+                self.status = "Oyun bitti: Iki taraf da 1/0 tasa indi (berabere)"
 
         self.turn += 1
         self.current_num = self.next_num
@@ -1250,12 +1280,8 @@ class VersusGame:
         self.robot_ai.save_memory()
 
         if self.game_over:
-            if self.player_score > self.robot_score:
-                self.status = "Oyun bitti: Insan kazandi"
-            elif self.robot_score > self.player_score:
-                self.status = "Oyun bitti: Robot kazandi"
-            else:
-                self.status = "Oyun bitti: Berabere"
+            # Yukaridaki kosullar neden-sonuc metnini zaten status'a yazar.
+            pass
         else:
             self.status = "Insan hamlesini bekliyor"
             self.last_input_time = time.time()
