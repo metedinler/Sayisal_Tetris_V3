@@ -916,12 +916,13 @@ class VersusGame:
     def __init__(self, root):
         ensure_dirs()
 
+        self.root = root
+
         self.profile = load_profile()
         self._ensure_player_name()
         self.player_name = str(self.profile.get("player_name", "Oyuncu"))
         self.match_recorded = False
 
-        self.root = root
         self.root.title(f"Sayisal Tetris V3 - {self.player_name} vs Robot AI")
         self.root.geometry(f"{WIN_W}x{WIN_H}")
         self.root.resizable(True, True)
