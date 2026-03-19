@@ -1,8 +1,9 @@
 import json
 import os
+import shutil
 import statistics
 import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime
 
 
@@ -38,6 +39,8 @@ class _BaseObserver:
         self.explosion_history = []
         self.combo_history = []
         self.win_like_moves = 0
+        self.last_30_moves = deque(maxlen=30)
+        self.col_effect = {}
 
     def observe(self, log_item):
         if not isinstance(log_item, dict):
@@ -60,7 +63,86 @@ class _BaseObserver:
         if points >= 12 or explosions >= 2 or combo_mult >= 1.5:
             self.win_like_moves += 1
 
+        if isinstance(col, int):
+            col_stats = self.col_effect.setdefault(col, {"count": 0, "points": 0.0, "explosions": 0.0, "combo": 0.0})
+            col_stats["count"] += 1
+            col_stats["points"] += points
+            col_stats["explosions"] += explosions
+            col_stats["combo"] += combo_mult
+
+        self.last_30_moves.append(
+            {
+                "turn": int(log_item.get("turn", 0) or 0),
+                "col": col,
+                "points": points,
+                "explosions": explosions,
+                "combo_mult": combo_mult,
+                "risk": float(log_item.get("risk", 0) or 0),
+                "potential_explosions": float(log_item.get("potential_explosions", 0) or 0),
+            }
+        )
+
         self.total_turns += 1
+
+    def _last_30_summary(self):
+        if not self.last_30_moves:
+            return {
+                "move_count": 0,
+                "avg_points": 0.0,
+                "avg_explosions": 0.0,
+                "avg_combo": 0.0,
+                "counterfactual_gap": 0.0,
+                "top_effect_cols": [],
+            }
+
+        rows = list(self.last_30_moves)
+        move_count = len(rows)
+        avg_points = statistics.fmean(x["points"] for x in rows)
+        avg_explosions = statistics.fmean(x["explosions"] for x in rows)
+        avg_combo = statistics.fmean(x["combo_mult"] for x in rows)
+
+        effect_cols = []
+        for col, stats in self.col_effect.items():
+            cnt = int(stats.get("count", 0) or 0)
+            if cnt <= 0:
+                continue
+            effect_cols.append(
+                {
+                    "col": col,
+                    "count": cnt,
+                    "avg_points": round(float(stats.get("points", 0.0) or 0.0) / cnt, 3),
+                    "avg_explosions": round(float(stats.get("explosions", 0.0) or 0.0) / cnt, 3),
+                }
+            )
+        effect_cols.sort(key=lambda x: (x["avg_points"], x["avg_explosions"]), reverse=True)
+        top_effect_cols = effect_cols[:3]
+
+        observed_cols = [x["col"] for x in rows if isinstance(x.get("col"), int)]
+        baseline = {}
+        for c in set(observed_cols):
+            stats = self.col_effect.get(c, {})
+            cnt = int(stats.get("count", 0) or 0)
+            if cnt > 0:
+                baseline[c] = float(stats.get("points", 0.0) or 0.0) / cnt
+        best_alt = max(baseline.values()) if baseline else 0.0
+
+        gaps = []
+        for item in rows:
+            c = item.get("col")
+            if not isinstance(c, int):
+                continue
+            current = baseline.get(c, item.get("points", 0.0) or 0.0)
+            gaps.append(max(0.0, best_alt - current))
+
+        counterfactual_gap = statistics.fmean(gaps) if gaps else 0.0
+        return {
+            "move_count": move_count,
+            "avg_points": round(avg_points, 3),
+            "avg_explosions": round(avg_explosions, 3),
+            "avg_combo": round(avg_combo, 3),
+            "counterfactual_gap": round(counterfactual_gap, 3),
+            "top_effect_cols": top_effect_cols,
+        }
 
     def _skill_score(self):
         if self.total_turns <= 0:
@@ -92,6 +174,7 @@ class _BaseObserver:
             "avg_points": round(statistics.fmean(self.points_history), 3) if self.points_history else 0.0,
             "avg_explosions": round(statistics.fmean(self.explosion_history), 3) if self.explosion_history else 0.0,
             "win_like_rate": round(self.win_like_moves / max(1, self.total_turns), 3),
+            "last_30": self._last_30_summary(),
         }
 
 
@@ -184,8 +267,9 @@ class DecisionFusionAgent:
         strategy_weights["safe_stack"] += holes_penalty * 0.7
 
         freedom_ratio = 0.30
-        reject_chance = 0.30
-        logical_ratio = 0.70
+        reject_chance = 0.12
+        reject_cap_ratio = 0.30
+        logical_ratio = 0.88
 
         command_text = (
             "Gazi emri: 10 standart ve 5 onerici baglantili hibrit karar. "
@@ -200,10 +284,13 @@ class DecisionFusionAgent:
             "proposal_weights": proposal_weights,
             "freedom_ratio": freedom_ratio,
             "reject_chance": reject_chance,
+            "reject_cap_ratio": reject_cap_ratio,
             "logical_ratio": logical_ratio,
             "command_text": command_text,
             "skill_enemy": round(e_skill, 3),
             "skill_robot": round(r_skill, 3),
+            "enemy_last_30": enemy_snap.get("last_30", {}),
+            "robot_last_30": robot_snap.get("last_30", {}),
             "player_dense_cols": player_stack.get("dense_cols", []),
             "robot_dense_cols": robot_stack.get("dense_cols", []),
             "robot_holes": int(robot_stack.get("holes", 0)),
@@ -230,13 +317,42 @@ class GaziModeCoordinator:
     def __init__(self, memory_dir, log_dir):
         self.memory_dir = memory_dir
         self.log_dir = log_dir
+        self.gazi_log_dir = os.path.join(self.log_dir, "gazi")
         self.enemy = EnemyObserverAgent()
         self.robot = RobotObserverAgent()
         self.fusion = DecisionFusionAgent()
 
-        self.agent_log_path = os.path.join(self.memory_dir, "gazi_agents_log.jsonl")
+        self.legacy_agent_log_path = os.path.join(self.memory_dir, "gazi_agents_log.jsonl")
+        self.agent_log_path = os.path.join(self.gazi_log_dir, "gazi_agents_log.jsonl")
+        self._bootstrap_agent_log()
         self.known_offsets = {}
         self.last_follow_at = 0.0
+
+    def _bootstrap_agent_log(self):
+        try:
+            os.makedirs(self.gazi_log_dir, exist_ok=True)
+            os.makedirs(self.memory_dir, exist_ok=True)
+            if os.path.exists(self.legacy_agent_log_path):
+                if not os.path.exists(self.agent_log_path):
+                    shutil.copy2(self.legacy_agent_log_path, self.agent_log_path)
+                else:
+                    self._merge_jsonl_logs(self.legacy_agent_log_path, self.agent_log_path)
+        except Exception:
+            pass
+
+    def _merge_jsonl_logs(self, src_path, dst_path):
+        try:
+            with open(dst_path, "r", encoding="utf-8") as f:
+                existing = set(line.strip() for line in f if line.strip())
+            with open(src_path, "r", encoding="utf-8") as src, open(dst_path, "a", encoding="utf-8") as dst:
+                for line in src:
+                    raw = line.strip()
+                    if not raw or raw in existing:
+                        continue
+                    dst.write(raw + "\n")
+                    existing.add(raw)
+        except Exception:
+            pass
 
     def _append_agent_log(self, event, payload):
         row = {

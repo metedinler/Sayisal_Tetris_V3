@@ -154,6 +154,22 @@ PROPOSAL_ENGINE_INFO_TR = {
     "stability_guard": "Tahta istikrarini ve guvenli akisi korur.",
 }
 
+DECISION_LABELS_TR = {
+    "base": "Temel Secim",
+    "proposal_applied": "Oneri Uygulandi",
+    "proposal_rejected": "Oneri Reddedildi",
+    "gazi_random_reject": "Gazi Rastgele Red",
+    "proposal_forced_apply_ratio_guard": "Oran Korumasiyla Zorunlu Kabul",
+    "fallback": "Yedek Secim",
+}
+
+FEED_FILTER_LABELS_TR = {
+    "all": "Tum Akis",
+    "proposal": "Sadece Oneriler",
+    "rejected": "Sadece Reddedilenler",
+    "applied": "Sadece Uygulananlar",
+}
+
 
 def strategy_display_name(name):
     key = str(name or "").strip()
@@ -187,6 +203,20 @@ def proposal_engine_info_text(name):
     if not key:
         return "Oneri motoru bilgisi yok."
     return PROPOSAL_ENGINE_INFO_TR.get(key, "Oneri motoru aciklamasi kayitli degil.")
+
+
+def decision_display_name(decision):
+    key = str(decision or "").strip()
+    if not key:
+        return "Bilinmiyor"
+    return DECISION_LABELS_TR.get(key, key)
+
+
+def feed_filter_display_name(mode):
+    key = str(mode or "").strip()
+    if not key:
+        return FEED_FILTER_LABELS_TR["all"]
+    return FEED_FILTER_LABELS_TR.get(key, key)
 
 
 def ensure_dirs():
@@ -808,6 +838,8 @@ class RobotLearner:
         self.last_train_error = 0.0
         self.last_reason = ""
         self.decision_count = 0
+        self.proposal_applied_count = 0
+        self.proposal_rejected_count = 0
 
         self._load_memory()
 
@@ -822,6 +854,8 @@ class RobotLearner:
             self.epsilon = data.get("epsilon", self.epsilon)
             self.total_updates = data.get("total_updates", 0)
             self.decision_count = data.get("decision_count", 0)
+            self.proposal_applied_count = int(data.get("proposal_applied_count", self.proposal_applied_count) or 0)
+            self.proposal_rejected_count = int(data.get("proposal_rejected_count", self.proposal_rejected_count) or 0)
         except Exception:
             pass
 
@@ -832,10 +866,33 @@ class RobotLearner:
             "epsilon": self.epsilon,
             "total_updates": self.total_updates,
             "decision_count": self.decision_count,
+            "proposal_applied_count": self.proposal_applied_count,
+            "proposal_rejected_count": self.proposal_rejected_count,
             "updated_at": datetime.utcnow().isoformat(),
         }
         with open(MODEL_PATH, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    def _proposal_total(self):
+        return self.proposal_applied_count + self.proposal_rejected_count
+
+    def _proposal_reject_ratio(self):
+        total = self._proposal_total()
+        if total <= 0:
+            return 0.0
+        return self.proposal_rejected_count / total
+
+    def _can_reject_more(self, cap_ratio):
+        try:
+            cap = float(cap_ratio)
+        except Exception:
+            cap = 0.30
+        cap = max(0.0, min(1.0, cap))
+        future_total = self._proposal_total() + 1
+        if future_total <= 0:
+            return True
+        projected_ratio = (self.proposal_rejected_count + 1) / future_total
+        return projected_ratio <= cap
 
     def _features_for_col(self, board, current_num, next_num, level, col):
         row = first_empty_from_bottom(board, col)
@@ -1024,12 +1081,18 @@ class RobotLearner:
                     gate_pass = True
                 if game_mode == GAME_MODE_GAZI and proposal_score > final_score - 0.01:
                     gate_pass = True
+                reject_cap_ratio = float(guidance.get("reject_cap_ratio", 0.30) or 0.30)
                 if game_mode == GAME_MODE_GAZI:
                     reject_chance = float(guidance.get("reject_chance", 0.30) or 0.30)
-                    if random.random() < reject_chance:
+                    if random.random() < reject_chance and self._can_reject_more(reject_cap_ratio):
                         gate_pass = False
                         decision = "gazi_random_reject"
                         reason = "Gazi modu: strateji cesitliligi icin rastgele red uygulandi"
+
+                if (not gate_pass) and (not self._can_reject_more(reject_cap_ratio)):
+                    gate_pass = True
+                    decision = "proposal_forced_apply_ratio_guard"
+                    reason = "Reddetme orani siniri (%30) asilmamasi icin oneri zorunlu kabul edildi"
 
                 if gate_pass:
                     used_proposal = True
@@ -1043,13 +1106,16 @@ class RobotLearner:
                     risk_hint = risk_score(board, chosen_col)
                     score_drive = (x[8] * 1.4) + (x[9] * 1.7) + (max(0.0, 1.0 - risk_hint) * 0.9)
                     safety_drive = (x[11] * 1.2) + (x[10] * 0.6) - (x[6] * 0.8)
-                    decision = "proposal_applied"
-                    reason = f"Yeni strateji onerisi kabul edildi ({proposal.get('engine_name', 'unknown_engine')})"
+                    if decision != "proposal_forced_apply_ratio_guard":
+                        decision = "proposal_applied"
+                        reason = f"Yeni strateji onerisi kabul edildi ({proposal.get('engine_name', 'unknown_engine')})"
                     self.strategy_engine.maybe_add_strategy(proposal["candidate"])
+                    self.proposal_applied_count += 1
                 else:
                     if decision != "gazi_random_reject":
                         decision = "proposal_rejected"
                     reason = f"Yeni strateji onerisi reddedildi ({proposal.get('engine_name', 'unknown_engine')})"
+                    self.proposal_rejected_count += 1
 
         potential = potential_hint
         risk_val = risk_hint
@@ -1099,6 +1165,10 @@ class RobotLearner:
             "gazi_command": guidance.get("command_text", "") if game_mode == GAME_MODE_GAZI else "",
             "gazi_freedom_ratio": float(guidance.get("freedom_ratio", 0.0) or 0.0) if game_mode == GAME_MODE_GAZI else 0.0,
             "gazi_reject_chance": float(guidance.get("reject_chance", 0.0) or 0.0) if game_mode == GAME_MODE_GAZI else 0.0,
+            "gazi_reject_cap_ratio": float(guidance.get("reject_cap_ratio", 0.30) or 0.30) if game_mode == GAME_MODE_GAZI else 0.30,
+            "proposal_applied_total": self.proposal_applied_count,
+            "proposal_rejected_total": self.proposal_rejected_count,
+            "proposal_reject_ratio": round(self._proposal_reject_ratio(), 3),
         }
         return chosen_col, meta
 
@@ -1393,7 +1463,7 @@ class VersusGame:
         messagebox.showinfo(
             "Hakkinda",
             "Sayisal Tetris V3\n"
-            "Windows Human vs Robot AI\n\n"
+            "Windows Insan vs Robot AI\n\n"
             "- 10 aktif robot stratejisi\n"
             "- 5 öneri motoru\n"
             "- Kalıcı öğrenme belleği\n"
@@ -1636,62 +1706,63 @@ class VersusGame:
             key=lambda t: t[1],
             reverse=True,
         )
-        top_weight_lines = []
-        for name, val in [x for x in weight_rows if x[1] > 0][:5]:
-            top_weight_lines.append(f"- {strategy_display_name(name)}: {round(val, 3)}")
+        top_weight_lines = [f"- {strategy_display_name(name)}: {round(val, 3)}" for name, val in [x for x in weight_rows if x[1] > 0][:5]]
+
+        enemy30 = enemy.get("last_30", {}) or {}
+        robot30 = robot.get("last_30", {}) or {}
+        player_name = self.player_name
+        decision_text = decision_display_name(self.robot_meta.get("decision", "N/A") if self.robot_meta else "N/A")
 
         lines = [
-            "GAZI ANALIZ EKRANI",
+            "## GAZI ANALIZ PANOSU",
+            "Amac: Robot karar zincirini, oyuncu etkisini ve ajan birlestirme sonucunu tek bakista gostermek.",
             "",
-            "1) Robot secim kriter agaci",
+            "## 1) Robot Secim Kriter Agaci",
             f"- Oyun modu: {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
             f"- Robot profili: {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
             f"- Son strateji: {strategy_display_name(active_strategy)}",
             f"- Strateji anlami: {strategy_info_text(active_strategy)}",
-            f"- Son karar: {self.robot_meta.get('decision', 'N/A') if self.robot_meta else 'N/A'}",
+            f"- Son karar: {decision_text}",
             f"- Son oncelik: {self.robot_meta.get('priority', 'N/A') if self.robot_meta else 'N/A'}",
             f"- Son neden: {self.robot_meta.get('reason', 'N/A') if self.robot_meta else 'N/A'}",
             "",
-            "2) Oneri motoru onerileri",
+            "## 2) Oneri Motoru Ozet",
             f"- Son onerisi: {self.last_proposal_banner}",
             f"- Son oneri motoru: {proposal_engine}",
-            f"- Oneri motoru anlami: {proposal_engine_info_text(self.robot_meta['proposal'].get('engine_name', 'unknown') if self.robot_meta and self.robot_meta.get('proposal') else '')}",
-            f"- Oneri karar durumu: {self.robot_meta.get('decision', 'N/A') if self.robot_meta else 'N/A'}",
+            f"- Motor aciklamasi: {proposal_engine_info_text(self.robot_meta['proposal'].get('engine_name', 'unknown') if self.robot_meta and self.robot_meta.get('proposal') else '')}",
+            f"- Karar durumu: {decision_text}",
             f"- Rastgele red sansi (Gazi): %{int((self.robot_meta.get('gazi_reject_chance', 0.0) if self.robot_meta else 0.0) * 100)}",
+            f"- Red ust siniri: %{int((self.robot_meta.get('gazi_reject_cap_ratio', 0.30) if self.robot_meta else 0.30) * 100)}",
+            f"- Gerceklesen red orani: %{int((self.robot_meta.get('proposal_reject_ratio', 0.0) if self.robot_meta else 0.0) * 100)}",
             "- Yurutulen strateji agirliklari (ust 5):",
-            "",
-            "3) Dusman izleme sistemi verileri",
-            f"- Tur sayisi: {enemy.get('turns', 0)}",
-            f"- Ustun kolon paternleri: {enemy.get('top_cols', [])}",
-            f"- Beceri seviyesi: {enemy.get('skill_label', 'N/A')} ({enemy.get('skill_score', 0)})",
-            f"- Kazandiran hamle orani: {enemy.get('win_like_rate', 0)}",
-            "",
-            "4) Robot izleme sistemi (ulke izleme satiri dahil)",
-            f"- Tur sayisi: {robot.get('turns', 0)}",
-            f"- Robot patern kolonlari: {robot.get('top_cols', [])}",
-            f"- Robot beceri seviyesi: {robot.get('skill_label', 'N/A')} ({robot.get('skill_score', 0)})",
-            "",
-            "5) Karar ve karsilastirma ajani",
-            f"- Son stil: {last_directive.get('style', 'N/A')}",
-            f"- Hedef kolonlar: {last_directive.get('target_cols', [])}",
-            f"- Mantikli secim orani: %{int((last_directive.get('logical_ratio', 0.7) or 0.7) * 100)}",
-            f"- Ozgur secim orani: %{int((last_directive.get('freedom_ratio', 0.3) or 0.3) * 100)}",
-            f"- Rastgele red olay sayisi: {fusion.get('random_reject_events', 0)}",
-            f"- Mantik secim olay sayisi: {fusion.get('logic_choice_events', 0)}",
-            "",
-            "6) Gazi komut emri",
-            f"- {last_directive.get('command_text', 'Henuz komut uretilmedi')}",
-            "",
-            "7) Log kayit",
-            f"- Oyun logu: {os.path.basename(self.logger.path)}",
-            f"- Ajan logu: {os.path.basename(str(snap.get('agent_log', 'gazi_agents_log.jsonl')))}",
         ]
         lines.extend(top_weight_lines if top_weight_lines else ["- Ust agirlik bulunamadi"])
 
         lines.extend(
             [
                 "",
-                "8) Strateji sozlugu",
+                "## 3) Izleme Ajanlari (30 Hamle Etki Tablosu)",
+                "Aciklama | Oyuncu | Robot",
+                f"Tur sayisi | {enemy.get('turns', 0)} | {robot.get('turns', 0)}",
+                f"Ust kolon paternleri | {enemy.get('top_cols', [])} | {robot.get('top_cols', [])}",
+                f"Beceri seviyesi | {enemy.get('skill_label', 'N/A')} ({enemy.get('skill_score', 0)}) | {robot.get('skill_label', 'N/A')} ({robot.get('skill_score', 0)})",
+                f"Kazandiran hamle orani | {enemy.get('win_like_rate', 0)} | {robot.get('win_like_rate', 0)}",
+                f"Son 30 ortalama puan | {enemy30.get('avg_points', 0)} | {robot30.get('avg_points', 0)}",
+                f"Son 30 ortalama patlama | {enemy30.get('avg_explosions', 0)} | {robot30.get('avg_explosions', 0)}",
+                f"Karsi-olgusal fark (farkli sutun olsaydi) | {enemy30.get('counterfactual_gap', 0)} | {robot30.get('counterfactual_gap', 0)}",
+                "",
+                "## 4) Karar ve Karsilastirma Ajani",
+                f"- Son stil: {last_directive.get('style', 'N/A')}",
+                f"- Hedef kolonlar: {last_directive.get('target_cols', [])}",
+                f"- Mantikli secim orani: %{int((last_directive.get('logical_ratio', 0.7) or 0.7) * 100)}",
+                f"- Ozgur secim orani: %{int((last_directive.get('freedom_ratio', 0.3) or 0.3) * 100)}",
+                f"- Rastgele red olay sayisi: {fusion.get('random_reject_events', 0)}",
+                f"- Mantik secim olay sayisi: {fusion.get('logic_choice_events', 0)}",
+                "",
+                "## 5) Gazi Komut Emri",
+                f"- {last_directive.get('command_text', 'Henuz komut uretilmedi')}",
+                "",
+                "## 6) Strateji Sozlugu",
                 "- Guvenli Yigma: Tasma riskini azaltir.",
                 "- Maksimum Potansiyel: Patlama firsatini zorlar.",
                 "- Denge: Risk-puan ortasi oynar.",
@@ -1703,12 +1774,14 @@ class VersusGame:
                 "- 9 Toplam Odagi: Sum9 odakli oynar.",
                 "- Hayatta Kalma Karmasi: Kritik anda savunmaya gecer.",
                 "",
-                "9) Oneri motoru sozlugu",
+                "## 7) Oneri Motoru Sozlugu",
                 "- Hafif Mutasyon: Kucuk varyasyonlarla guvenli iyilestirme.",
                 "- Agresif Mutasyon: Hizli kazanclari denemek icin buyuk varyasyon.",
                 "- Risk Dengeleyici: Tasma riski ile puani dengelemeye calisir.",
                 "- Kombo Guclendirici: Patlama zinciri uretmeye odaklanir.",
                 "- Kararlilik Koruyucu: Tahtayi dagitmadan istikrarli oyun hedefler.",
+                "",
+                f"Not: Oyuncu = {player_name}, Robot = AI ajanli sistem.",
             ]
         )
         return "\n".join(lines)
@@ -1718,7 +1791,26 @@ class VersusGame:
             return
         self.analysis_text.configure(state="normal")
         self.analysis_text.delete("1.0", "end")
-        self.analysis_text.insert("1.0", self._analysis_text_payload())
+        payload = self._analysis_text_payload()
+        self.analysis_text.insert("1.0", payload)
+
+        self.analysis_text.tag_configure("main_header", foreground="#e2e8f0", background="#1d4ed8", font=("Segoe UI", 13, "bold"), spacing1=10, spacing3=8)
+        self.analysis_text.tag_configure("section_header", foreground="#f8fafc", background="#334155", font=("Segoe UI", 11, "bold"), spacing1=8, spacing3=4)
+        self.analysis_text.tag_configure("table_line", foreground="#cbd5e1", background="#0f172a", font=("Consolas", 10, "normal"))
+        self.analysis_text.tag_configure("normal_line", foreground="#dbeafe", background="#0b1220", font=("Segoe UI", 10, "normal"))
+
+        for idx, line in enumerate(payload.splitlines(), start=1):
+            start = f"{idx}.0"
+            end = f"{idx}.end"
+            if line.startswith("## GAZI ANALIZ PANOSU"):
+                self.analysis_text.tag_add("main_header", start, end)
+            elif line.startswith("## "):
+                self.analysis_text.tag_add("section_header", start, end)
+            elif "|" in line and not line.startswith("Not:"):
+                self.analysis_text.tag_add("table_line", start, end)
+            else:
+                self.analysis_text.tag_add("normal_line", start, end)
+
         self.analysis_text.configure(state="disabled")
 
     def show_analysis_window(self, _event=None):
@@ -1729,8 +1821,8 @@ class VersusGame:
 
         self.analysis_win = tk.Toplevel(self.root)
         self.analysis_win.title("Robot Analiz Penceresi (H)")
-        self.analysis_win.geometry("920x680")
-        self.analysis_win.minsize(760, 520)
+        self.analysis_win.geometry("980x720")
+        self.analysis_win.minsize(820, 560)
 
         frm = tk.Frame(self.analysis_win, bg="#0f172a")
         frm.pack(fill="both", expand=True)
@@ -1741,7 +1833,7 @@ class VersusGame:
             bg="#0b1220",
             fg="#dbeafe",
             insertbackground="#dbeafe",
-            font=("Consolas", 10),
+            font=("Segoe UI", 10),
         )
         self.analysis_text.pack(fill="both", expand=True, padx=8, pady=8)
         self.analysis_text.configure(state="disabled")
@@ -2372,8 +2464,10 @@ class VersusGame:
         if self.robot_meta and self.robot_meta.get("proposal"):
             p = self.robot_meta["proposal"]
             decision_type = "applied" if self.robot_meta.get("used_proposal") else "rejected"
+            cand_name = strategy_display_name(p["candidate"].get("name", "N/A"))
+            engine_name = proposal_engine_display_name(p.get("engine_name", "unknown"))
             self.push_reason(
-                f"Yeni strateji onerisi goruldu: {p['candidate']['name']} ({p.get('engine_name', 'unknown')}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}",
+                f"Yeni strateji onerisi goruldu: {cand_name} ({engine_name}) -> {'uygulandi' if self.robot_meta.get('used_proposal') else 'reddedildi'}",
                 decision_type,
             )
 
@@ -2591,9 +2685,6 @@ class VersusGame:
         win_h = max(WIN_H, self.canvas.winfo_height())
         extra_w = max(0, win_w - WIN_W)
         right_x = RIGHT_X + (extra_w // 2)
-        panel_x = PANEL_X + extra_w
-
-        self.canvas.create_text(BOARD_PADDING, 10, anchor="nw", text="Sayisal Tetris V3 - Human vs Robot (Windows)", fill="#f8fafc", font=("Segoe UI", 16, "bold"))
 
         self._draw_board(
             self.player_board,
@@ -2617,6 +2708,15 @@ class VersusGame:
             active_piece=self.robot_active_piece if self._is_normal_mode() else None,
             flash_cells=self.flash_robot,
             flash_style="robot",
+        )
+
+        title_x = LEFT_X + BOARD_W + (GAP_BETWEEN_BOARDS // 2)
+        self.canvas.create_text(
+            title_x,
+            TOP_Y - 20,
+            text="Sayisal TETRIS",
+            fill="#f8fafc",
+            font=("Times New Roman", 24, "bold"),
         )
 
         # Orta panel: tur/seviye + sonraki sayilar
@@ -2655,12 +2755,14 @@ class VersusGame:
         if feed_y2 - feed_y1 < 90:
             feed_y1 = feed_y2 - 90
 
-        nx = panel_x
+        nx = right_x + BOARD_W + 18
         ny = TOP_Y
-        info_x1 = nx - 10
+        info_x1 = nx - 8
         info_x2 = win_w - 24
         info_y1 = ny
         info_y2 = max(info_y1 + 120, feed_y1 - 12)
+        if info_x2 - info_x1 < 260:
+            info_x1 = info_x2 - 260
         self.canvas.create_rectangle(info_x1, info_y1, info_x2, info_y2, outline="#475569", width=2, fill="#111827")
 
         lines = [
@@ -2698,33 +2800,37 @@ class VersusGame:
             f"Model guncelleme: {self.robot_ai.total_updates}",
             f"Son egitim hatasi: {self.robot_ai.last_train_error:.4f}",
             f"Bekleme modu: {'ACIK' if self.wait_mode_var.get() else 'KAPALI'}",
-            f"Akis filtresi: {self.feed_filter_var.get()}",
+            f"Akis filtresi: {feed_filter_display_name(self.feed_filter_var.get())}",
             f"Gazi komutu: {self.robot_meta.get('gazi_command', 'N/A') if self.robot_meta else 'N/A'}",
             "",
             f"Son onerisi: {self.last_proposal_banner}",
-            f"Log dosyasi: {os.path.basename(self.logger.path)}",
         ]
 
         y = ny + 14
-        row_step = 20 if win_h >= 940 else 18
-        max_info_rows = max(1, int((info_y2 - y - 8) / row_step))
-        visible_lines = lines[:max_info_rows]
-        if len(visible_lines) < len(lines):
-            visible_lines[-1] = "..."
+        max_bottom = info_y2 - 10
 
         heading_set = {"Profil ve Robot Durumu", "KONTROLLER", "OYUNCU", "ROBOT", "OYUN MODU VE STRATEJI"}
-        for i, line in enumerate(visible_lines):
+        for line in lines:
+            if y > max_bottom:
+                break
             is_heading = line in heading_set
-            self.canvas.create_text(
+            text_id = self.canvas.create_text(
                 nx,
-                y + i * row_step,
+                y,
                 anchor="nw",
                 text=line,
                 fill="#e2e8f0" if is_heading else "#cbd5e1",
                 font=("Segoe UI", 12 if is_heading else 11, "bold" if is_heading else "normal"),
+                width=max(120, info_x2 - nx - 10),
             )
+            bbox = self.canvas.bbox(text_id)
+            line_h = (bbox[3] - bbox[1]) if bbox else (22 if is_heading else 18)
+            y += line_h + (6 if is_heading else 4)
 
-        info_bottom = y + len(visible_lines) * row_step
+        if y <= max_bottom and len(lines) > 0 and y + 22 > max_bottom:
+            self.canvas.create_text(nx, max_bottom - 16, anchor="nw", text="...", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
+
+        info_bottom = y
 
         if self.game_over:
             bx1 = LEFT_X + 80
