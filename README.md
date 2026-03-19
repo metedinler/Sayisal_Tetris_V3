@@ -269,3 +269,29 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - Savunmaci profil daha dusuk riskli kurulumlari onceliklendirir.
 - Dengeli profil iki yaklasimi orta duzeyde birlestirir.
 - Sag panelde `Hedef`, `Profil davranisi`, `Skor itkisi` ve `Guvenlik itkisi` canli gorunur.
+
+## 2026-03-19 - v3.9.0 Gazi Modu ve Aciklanabilir AI Eki (Append-Only)
+
+### Yeni oyun/AI davranislari (TR)
+- `Gazi` oyun modu eklendi; mevcut modlar korunarak secilebilir halde birakildi.
+- `B` tusu davranisi guclendirildi: oyun akisi beklemeye alinip analiz sureci aninda tetiklenir.
+- `H` analiz ekrani genisletildi: strateji anlami, onerinin nedeni, ajan katkisi ve karar ozeti gorunur.
+- Oyun panelinde `sonraki` ve `2 sonraki` tas gostergeleri netlestirildi.
+
+### Yeni modul ve gorevleri (TR)
+- `gazi_mode_agents.py` eklendi.
+- `EnemyObserverAgent`: rakip hamle paternlerini ve baski durumunu izler.
+- `RobotObserverAgent`: robotun kendi kararlarindaki guven/risk degisimini izler.
+- `DecisionFusionAgent`: iki gozlem kanalini birlestirip final yonlendirme uretir.
+- `GaziModeCoordinator`: gecmis log analizi + canli akis takibi + ajan loglamasini orkestre eder.
+
+### SID ve dagitim notu (TR)
+- SID oynatma yolu yalnizca `sidplayfp` uzerinden surdurulur.
+- `Sid` klasorundeki `vlc-3.0.23-win64.exe` dagitim kapsamindan cikarilmistir (kullanilmiyor).
+- Track sonu gecisi dogal bitis temelli kalir; surec kapanista tam temizlenir.
+
+### New release highlights (EN)
+- Added `Gazi` mode with a 3-agent explainable AI pipeline.
+- Expanded `H` analysis screen for strategy meaning, proposal rationale and fused agent output.
+- Strengthened `B` wait-mode to pause flow and trigger immediate analysis.
+- SID delivery now relies on `sidplayfp` only; bundled VLC installer was removed.

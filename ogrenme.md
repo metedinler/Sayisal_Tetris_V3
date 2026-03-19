@@ -42,3 +42,35 @@ Evet, mantığın doğru: robot zaten kısmen yenilerek ve hata yaparak öğreni
 
 ## Sonraki Oneri
 İstersen bir sonraki adımda sadece analiz amaçlı bir “izleme checklisti” hazırlayayım. Kod değiştirmeden, 10 oyun sonunda robotun gerçekten iyileşip iyileşmediğini objektif ölçen kısa bir tablo verebilirim.
+
+## 2026-03-19 - Nasil Oynanir Ekrani Eklendi (Append-Only)
+
+Yeni davranis:
+1. Oyun acilisinda `Nasil Oynanir` ekrani otomatik acilir.
+2. Ekranda `Bir daha gosterme` checkbox'i vardir.
+3. Checkbox isaretlenirse tercih profile yazilir ve sonraki acilislarda ekran otomatik acilmaz.
+4. Yardim menusu altina `Nasil Oynanir` secenegi eklendi; buradan her zaman manuel acilabilir.
+
+Ekran icerigi:
+1. Sum9 ve kilit patlamasi kurallari.
+2. Combo carpanlari ve bomba+joker/kilit ek etkisi.
+3. Ozel taslarin (B/J/L) ne yaptigi.
+4. Oyunu kazanma kosullari.
+5. Robotun genel karar mekanigi.
+6. Modlar (Kolay/Normal/Zor/Gazi) ve profil farklari.
+7. Robot ajanlarinin gorevleri.
+8. Robotun oyun icinde nasil davrandigina dair ozet.
+
+## 2026-03-19 - v3.9.0 Ogrenme Ozeti (Append-Only)
+
+Bu surumde ogrenilen ve sabitlenen noktalar:
+1. Bekleme/analiz akisinda kullanici beklentisi hizlidir; `B` ile duraklatip aninda analiz acilmasi daha anlasilir bir deneyim verir.
+2. Aciklanabilirlik tek kaynaktan gelmez; rakip-gozlem + robot-gozlem + birlestirme ajanlari birlikte daha iyi karar aciklamasi uretir.
+3. `H` penceresinde sadece hamle sonucu degil, stratejinin ne anlama geldigi ve neden secildigi de gosterilmelidir.
+4. Oyun icinde `sonraki` ve `2 sonraki` bilgi akisi karar kalitesini arttirir.
+5. SID tarafinda tek oynatici standardi (`sidplayfp`) bakim maliyetini dusurur; VLC dagitimdan cikarilmistir.
+
+Yeni moduller ve etkileri:
+1. `gazi_mode_agents.py`: 3 ajanli gozlem ve birlestirme.
+2. `sid_player.py`: dogal track sonu gecisi + kapanista surec agaci temizligi.
+3. `tetris_v3_windows_ai.py`: Gazi entegrasyonu, H analiz genisletmesi, baslangic yardim akisi, yerlesim iyilestirmeleri.

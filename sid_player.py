@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import atexit
+import time
 from datetime import datetime
 
 
@@ -19,6 +20,8 @@ class SidMusicManager:
         self.playlist = []
         self.current_index = -1
         self.current_track = ""
+        self.track_started_at = 0.0
+        self.max_track_seconds = 420
         self.proc = None
         self.player_path = self._resolve_player_path()
         self.available = self.player_path is not None
@@ -137,6 +140,7 @@ class SidMusicManager:
             )
             self.current_index = index
             self.current_track = self.playlist[index]
+            self.track_started_at = time.time()
             self._save_state(self.current_track, self.current_index)
             return True
         except Exception:
@@ -147,9 +151,21 @@ class SidMusicManager:
         if not self.available or not self.playlist:
             return
         if self.proc is None:
+            if self.current_index >= 0:
+                self.play_index((self.current_index + 1) % len(self.playlist))
             return
-        if self.proc.poll() is not None:
-            self.play_index((self.current_index + 1) % len(self.playlist))
+        ret = self.proc.poll()
+        if ret is not None:
+            if not self.play_index((self.current_index + 1) % len(self.playlist)):
+                self.rebuild_playlist()
+                if self.playlist:
+                    self.play_index((self.current_index + 1) % len(self.playlist))
+            return
+
+        # Fallback: if player process hangs on a track, force next after a generous timeout.
+        if self.max_track_seconds > 0 and self.track_started_at > 0:
+            if time.time() - self.track_started_at > self.max_track_seconds:
+                self.play_index((self.current_index + 1) % len(self.playlist))
 
     def stop(self):
         if self.proc is None:
@@ -180,3 +196,4 @@ class SidMusicManager:
             except Exception:
                 pass
         self.proc = None
+        self.track_started_at = 0.0

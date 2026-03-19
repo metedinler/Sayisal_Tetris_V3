@@ -80,3 +80,14 @@ Kurallar:
 - Oneri degerlendirmesinde zor mod ek puanlama katsayilari guclendirildi; uygun durumda onerinin uygulanma olasiligi arttirildi.
 - Tur sonu `guided_reward` zor modda skor farki ve profil odakli ceza/bonuslarla guncellendi.
 - Sag panelde oyun modu, robot profili, aktif hedef, profil davranisi ve skor/guvenlik itkisi canli olarak gosterilmeye baslandi.
+
+## 2026-03-19 - v3.9.0 Gazi Modu, Aciklanabilir AI ve Dagitim
+- `Gazi` modu eklendi; mevcut modlarla birlikte secilebilir yapida sunuldu.
+- Yeni 3-ajan mimarisi eklendi (`gazi_mode_agents.py`): rakip gozlem, robot gozlem, karar birlestirme.
+- `B` tusu davranisi guclendirildi: oyun akisi beklemeye alinip analiz aninda baslatilir.
+- `H` analiz penceresi genisletildi: strateji anlami, onerinin kaynagi, ajan birlesim ciktilari ve karar gerekcesi gorunur.
+- Oyun arayuzunde `sonraki` + `2 sonraki` bilgi akisi netlestirildi.
+- Tahta baslik cizimi ust bantta yeniden duzenlenerek alan cakismasi duzeltildi.
+- SID oynatma altyapisi `sidplayfp` standardina baglandi; dagitimdaki `Sid/vlc-3.0.23-win64.exe` kaldirildi.
+- Dokumantasyon guncellendi: README, ogrenme notu ve programci el kitabi yeni moduller/gorevler ve surum davranislari ile senkronize edildi.
+- EXE yeniden derlenip yeni dagitim artefakti olusturuldu.

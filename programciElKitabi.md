@@ -442,3 +442,37 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 ### 18.5 Toplu log egitimi
 - Menüye `Tum Loglari Isle (Uzun Surer)` komutu eklenmistir.
 - Bu komut var olan `.jsonl` log havuzunu topluca replay egitimine alir.
+
+## 19. v3.9.0 Gazi Modu ve 3-Ajan Mimarisi (Append-Only)
+
+### 19.1 Mod amaci
+- `Gazi` modu, robotun sadece hamle secmesini degil, secim gerekcesini de aciklayabilir hale getirmek icin eklenmistir.
+
+### 19.2 Yeni moduller
+- `gazi_mode_agents.py`
+- `EnemyObserverAgent`: rakip tahta yogunlugu, riskli kolonlar, baski paternleri.
+- `RobotObserverAgent`: robotun karar guveni, oneri kabul/red trendi, istikrar.
+- `DecisionFusionAgent`: iki ajan cikisini ortak yonlendirmeye cevirir.
+- `GaziModeCoordinator`: tarihsel log analizi + canli log takibi + cikti kaydi.
+
+### 19.3 Ana oyuna entegrasyon
+- `tetris_v3_windows_ai.py` icinde Gazi modu secildiginde ajan direktifleri karar puanlamasina dahil edilir.
+- `B` tusu ve menu analiz akisi, oyunu beklemeye alip anlik analiz baslatacak sekilde netlestirilmistir.
+- `H` analiz penceresi, strateji aciklamalari ve ajan birlestirme sonucunu okunur sekilde verir.
+
+### 19.4 Arayuz ve bilgi akis notu
+- Gelen tas bilgisinin yanina `2 sonraki` tas bilgisi eklenmistir.
+- Tahta basliklari, oyun alaniyla cakismamasi icin ust bantta cizilir.
+
+## 20. SID Dagitim Karari ve Runtime Standardi (Append-Only)
+
+### 20.1 Calisma standardi
+- SID calistirma yolu `sidplayfp` ile standartlastirilmistir.
+- Kod tarafinda `SidMusicManager` yalnizca harici `sidplayfp` sureci kullanir.
+
+### 20.2 Paketleme notu
+- `Sid` klasorundeki `vlc-3.0.23-win64.exe` kullanilmadigi icin dagitimdan cikarilmistir.
+- Bu karar, paket boyutunu ve bakim yuzeyini azaltir.
+
+### 20.3 Duzeltme notu
+- Onceki teknik notlarda gecen `python-vlc` ibaresi bu surum itibariyla gecerli degildir; aktif yontem `sidplayfp` tabanlidir.
