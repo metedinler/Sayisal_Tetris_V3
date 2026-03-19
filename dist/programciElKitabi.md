@@ -138,13 +138,13 @@ Bu yapi klasik karar agaci siniflandirmasi degildir; kural tabanli asamali karar
 ## 6. Bekleme Modu ve Arka Plan Analizi
 Bekleme modu davranislari:
 - `B` tusu veya menu ile ac/kapat.
-- Kullanici 5 saniye hareketsizse log replay analizi tetiklenir. 
+- Kullanici 5 saniye hareketsizse log replay analizi tetiklenir.
 - Bekleme modu acikse sadece analiz yapilir.
 - Bekleme modu kapaliyse analiz sonrasi otomatik hamle akisi devam eder.
 
 Log replay teknigi:
 - Son log dosyalari taranir.
-- Robot kayitlari secilir. kullanicinin oyunlarinin loglari menuden analiz yap ile yapilir.
+- Robot kayitlari secilir.
 - Kayitli ozellik vektorleri ve oduller yeniden egitime verilir.
 - Boylece offline benzeri pekistirme etkisi elde edilir.
 
@@ -358,6 +358,33 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 - Son calinan track kaydedilir; sonraki acilista bir sonraki track ile devam edilir.
 - Liste bitince dairesel olarak basa doner.
 
+## 17. Zor Mod Skor Maksimizasyonu ve Profil Ayrimi (Append-Only)
+
+### 17.1 Karar puani bileşimi
+- `RobotLearner.choose_action` icinde final hamle puani artik su katmanlardan olusur:
+	- MiniNN cikisi + strateji havuzu skoru
+	- Profil biasi (agresif/savunmaci/dengeli)
+	- Mod biasi (kolay/normal/zor)
+- Zor mod biasi, patlama potansiyeli ve skor itkisini arttirarak puan odakli secimi one cikarir.
+
+### 17.2 Oneri gecidi (proposal)
+- Oneri skoru zor modda ayni skor-itkisi formuluyle tekrar degerlendirilir.
+- Oneri seceneginin baz secime gore puan avantaji yeterliyse gecit daha istekli sekilde uygular.
+
+### 17.3 Guided reward tuning
+- Tur sonu ogrenme odulu (`guided_reward`) zor modda skor farki, risk ve profil odakli bonus/cezalarla hesaplanir.
+- Agresif profil: potansiyel patlama ve skor farki avantajina ek bonus.
+- Savunmaci profil: risk dusurme odakli bonus.
+- Dengeli profil: skor ve guvenlik arasinda orta agirlik.
+
+### 17.4 Gozlenebilirlik
+- Sag panelde su alanlar canli olarak yayinlanir:
+	- Oyun modu
+	- Robot profili
+	- Aktif hedef metni
+	- Profil davranis metni
+	- Skor itkisi / Guvenlik itkisi
+
 ### 16.3 Teknik not
 - SID calicisi `python-vlc` kutuphanesi ile yonetilir.
 - Ses modu degisimi menuden aninda uygulanir ve `ai_memory/audio_settings.json` icinde saklanir.
@@ -415,3 +442,63 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 ### 18.5 Toplu log egitimi
 - Menüye `Tum Loglari Isle (Uzun Surer)` komutu eklenmistir.
 - Bu komut var olan `.jsonl` log havuzunu topluca replay egitimine alir.
+
+## 19. v3.9.0 Gazi Modu ve 3-Ajan Mimarisi (Append-Only)
+
+### 19.1 Mod amaci
+- `Gazi` modu, robotun sadece hamle secmesini degil, secim gerekcesini de aciklayabilir hale getirmek icin eklenmistir.
+
+### 19.2 Yeni moduller
+- `gazi_mode_agents.py`
+- `EnemyObserverAgent`: rakip tahta yogunlugu, riskli kolonlar, baski paternleri.
+- `RobotObserverAgent`: robotun karar guveni, oneri kabul/red trendi, istikrar.
+- `DecisionFusionAgent`: iki ajan cikisini ortak yonlendirmeye cevirir.
+- `GaziModeCoordinator`: tarihsel log analizi + canli log takibi + cikti kaydi.
+
+### 19.3 Ana oyuna entegrasyon
+- `tetris_v3_windows_ai.py` icinde Gazi modu secildiginde ajan direktifleri karar puanlamasina dahil edilir.
+- `B` tusu ve menu analiz akisi, oyunu beklemeye alip anlik analiz baslatacak sekilde netlestirilmistir.
+- `H` analiz penceresi, strateji aciklamalari ve ajan birlestirme sonucunu okunur sekilde verir.
+
+### 19.4 Arayuz ve bilgi akis notu
+- Gelen tas bilgisinin yanina `2 sonraki` tas bilgisi eklenmistir.
+- Tahta basliklari, oyun alaniyla cakismamasi icin ust bantta cizilir.
+
+## 20. SID Dagitim Karari ve Runtime Standardi (Append-Only)
+
+### 20.1 Calisma standardi
+- SID calistirma yolu `sidplayfp` ile standartlastirilmistir.
+- Kod tarafinda `SidMusicManager` yalnizca harici `sidplayfp` sureci kullanir.
+
+### 20.2 Paketleme notu
+- `Sid` klasorundeki `vlc-3.0.23-win64.exe` kullanilmadigi icin dagitimdan cikarilmistir.
+- Bu karar, paket boyutunu ve bakim yuzeyini azaltir.
+
+### 20.3 Duzeltme notu
+- Onceki teknik notlarda gecen `python-vlc` ibaresi bu surum itibariyla gecerli degildir; aktif yontem `sidplayfp` tabanlidir.
+
+## 21. v3.10.0 Kirilma ve PatternWatch Mimarisi (Append-Only)
+
+### 21.1 Yeni moduller
+- `breakpoint_agent.py`
+	- 10/20/30 tur penceresi uzerinde tarihsel + canli kirilma analizi.
+	- Ozel tas mantik skoru, toplam-9 niyet orani, gelecek tas plan orani gibi niyet metrikleri.
+- `pattern_watch_agent.py`
+	- Oyun aktif olsun/olmasin tum log havuzunu periyodik tarar.
+	- Oyuncu patern sapmalarini warning sinyallerine cevirir.
+
+### 21.2 Ana oyuna entegrasyon
+- `VersusGame.__init__`: iki ajan da olusturulur ve derin tarihsel tarama ile baslatilir.
+- `VersusGame.tick`: PatternWatch her dongude throttle'li sekilde loglari bagimsiz tarar.
+- `prepare_robot_move`: Gazi guidance once breakpoint sinyali, sonra pattern-watch sinyali ile birlestirilir.
+- Tur sonu akisi: `breakpoint_agent.observe_turn` + `build_live_warning` ile canli kirilma uyarisi uretilir.
+
+### 21.3 Yeni log semasi
+- `candidate_snapshot`: Robotun hamle oncesi en iyi aday kolon/sinir/risk skor listesi.
+- `future_numbers`: `[next_num, next_next_num]` baglami.
+
+### 21.4 Operasyonel not
+- Ajanlarin loglari `logs/gazi/` altina yazilir:
+	- `gazi_agents_log.jsonl`
+	- `breakpoint_agent_log.jsonl`
+	- `pattern_watch_agent_log.jsonl`

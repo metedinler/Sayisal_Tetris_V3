@@ -476,3 +476,29 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 
 ### 20.3 Duzeltme notu
 - Onceki teknik notlarda gecen `python-vlc` ibaresi bu surum itibariyla gecerli degildir; aktif yontem `sidplayfp` tabanlidir.
+
+## 21. v3.10.0 Kirilma ve PatternWatch Mimarisi (Append-Only)
+
+### 21.1 Yeni moduller
+- `breakpoint_agent.py`
+	- 10/20/30 tur penceresi uzerinde tarihsel + canli kirilma analizi.
+	- Ozel tas mantik skoru, toplam-9 niyet orani, gelecek tas plan orani gibi niyet metrikleri.
+- `pattern_watch_agent.py`
+	- Oyun aktif olsun/olmasin tum log havuzunu periyodik tarar.
+	- Oyuncu patern sapmalarini warning sinyallerine cevirir.
+
+### 21.2 Ana oyuna entegrasyon
+- `VersusGame.__init__`: iki ajan da olusturulur ve derin tarihsel tarama ile baslatilir.
+- `VersusGame.tick`: PatternWatch her dongude throttle'li sekilde loglari bagimsiz tarar.
+- `prepare_robot_move`: Gazi guidance once breakpoint sinyali, sonra pattern-watch sinyali ile birlestirilir.
+- Tur sonu akisi: `breakpoint_agent.observe_turn` + `build_live_warning` ile canli kirilma uyarisi uretilir.
+
+### 21.3 Yeni log semasi
+- `candidate_snapshot`: Robotun hamle oncesi en iyi aday kolon/sinir/risk skor listesi.
+- `future_numbers`: `[next_num, next_next_num]` baglami.
+
+### 21.4 Operasyonel not
+- Ajanlarin loglari `logs/gazi/` altina yazilir:
+	- `gazi_agents_log.jsonl`
+	- `breakpoint_agent_log.jsonl`
+	- `pattern_watch_agent_log.jsonl`
