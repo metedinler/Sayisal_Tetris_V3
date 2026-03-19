@@ -1373,7 +1373,9 @@ class VersusGame:
         self.breakpoint_signal = {}
         self.pattern_watch_signal = {}
         self.analysis_win = None
-        self.analysis_widgets = {}
+        self.analysis_text = None
+        self.dashboard_win = None
+        self.dashboard_widgets = {}
         self.howto_win = None
         self.music = SidMusicManager(
             root_dir=ROOT_DIR,
@@ -1432,8 +1434,8 @@ class VersusGame:
         self.root.bind_all("<F11>", self.on_toggle_fullscreen)
         self.root.bind_all("<h>", self.show_analysis_window)
         self.root.bind_all("<H>", self.show_analysis_window)
-        self.root.bind_all("<j>", self.show_analysis_window)
-        self.root.bind_all("<J>", self.show_analysis_window)
+        self.root.bind_all("<j>", self.show_dashboard_window)
+        self.root.bind_all("<J>", self.show_dashboard_window)
 
         self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.", "system")
         self.apply_sound_mode(push_message=False)
@@ -1494,7 +1496,8 @@ class VersusGame:
         menu_features.add_command(label="Gazi Ajanlari Simdi Calistir", command=self.manual_gazi_agents_run)
         menu_features.add_command(label="Gazi Ajanlari Derin Analiz", command=self.manual_gazi_agents_deep_run)
         menu_features.add_command(label="PatternWatch Simdi Tara", command=self.manual_pattern_watch_run)
-        menu_features.add_command(label="Analiz Penceresi (H/J)", command=self.show_analysis_window)
+        menu_features.add_command(label="Analiz Penceresi (H)", command=self.show_analysis_window)
+        menu_features.add_command(label="Dashboard (J)", command=self.show_dashboard_window)
         menu_features.add_command(label="Yeniden Baslat (R)", command=self.restart_match)
         menu_features.add_separator()
         menu_features.add_command(label="Cikis", command=self.on_quit)
@@ -1746,6 +1749,155 @@ class VersusGame:
         self.status = f"PatternWatch derin tarama: {rows} kayit, {warning_count} uyari"
         self.push_reason(self.status, "analysis")
 
+    def _analysis_text_payload(self):
+        snap = self.gazi_agents.snapshot()
+        enemy = snap.get("enemy", {})
+        robot = snap.get("robot", {})
+        fusion = snap.get("fusion", {})
+        last_directive = fusion.get("last_directive", {}) or {}
+        active_strategy = self.robot_meta.get("strategy", "N/A") if self.robot_meta else "N/A"
+        proposal_engine = "N/A"
+        if self.robot_meta and self.robot_meta.get("proposal"):
+            proposal_engine = proposal_engine_display_name(self.robot_meta["proposal"].get("engine_name", "unknown"))
+        weights = last_directive.get("strategy_weights", {}) or {}
+        weight_rows = sorted(
+            [(k, float(v or 0.0)) for k, v in weights.items()],
+            key=lambda t: t[1],
+            reverse=True,
+        )
+        top_weight_lines = [f"- {strategy_display_name(name)}: {round(val, 3)}" for name, val in [x for x in weight_rows if x[1] > 0][:5]]
+
+        enemy30 = enemy.get("last_30", {}) or {}
+        robot30 = robot.get("last_30", {}) or {}
+        player_name = self.player_name
+        decision_text = decision_display_name(self.robot_meta.get("decision", "N/A") if self.robot_meta else "N/A")
+
+        lines = [
+            "## GAZI ANALIZ PANOSU",
+            "Amac: Robot karar zincirini, oyuncu etkisini ve ajan birlestirme sonucunu tek bakista gostermek.",
+            "",
+            "## 1) Robot Secim Kriter Agaci",
+            f"- Oyun modu: {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
+            f"- Robot profili: {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
+            f"- Son strateji: {strategy_display_name(active_strategy)}",
+            f"- Strateji anlami: {strategy_info_text(active_strategy)}",
+            f"- Son karar: {decision_text}",
+            f"- Son oncelik: {self.robot_meta.get('priority', 'N/A') if self.robot_meta else 'N/A'}",
+            f"- Son neden: {self.robot_meta.get('reason', 'N/A') if self.robot_meta else 'N/A'}",
+            "",
+            "## 2) Oneri Motoru Ozet",
+            f"- Son onerisi: {self.last_proposal_banner}",
+            f"- Son oneri motoru: {proposal_engine}",
+            f"- Motor aciklamasi: {proposal_engine_info_text(self.robot_meta['proposal'].get('engine_name', 'unknown') if self.robot_meta and self.robot_meta.get('proposal') else '')}",
+            f"- Karar durumu: {decision_text}",
+            f"- Rastgele red sansi (Gazi): %{int((self.robot_meta.get('gazi_reject_chance', 0.0) if self.robot_meta else 0.0) * 100)}",
+            f"- Red ust siniri: %{int((self.robot_meta.get('gazi_reject_cap_ratio', 0.30) if self.robot_meta else 0.30) * 100)}",
+            f"- Gerceklesen red orani: %{int((self.robot_meta.get('proposal_reject_ratio', 0.0) if self.robot_meta else 0.0) * 100)}",
+            "- Yurutulen strateji agirliklari (ust 5):",
+        ]
+        lines.extend(top_weight_lines if top_weight_lines else ["- Ust agirlik bulunamadi"])
+
+        lines.extend(
+            [
+                "",
+                "## 3) Izleme Ajanlari (30 Hamle Etki Tablosu)",
+                "Aciklama | Oyuncu | Robot",
+                f"Tur sayisi | {enemy.get('turns', 0)} | {robot.get('turns', 0)}",
+                f"Ust kolon paternleri | {enemy.get('top_cols', [])} | {robot.get('top_cols', [])}",
+                f"Beceri seviyesi | {enemy.get('skill_label', 'N/A')} ({enemy.get('skill_score', 0)}) | {robot.get('skill_label', 'N/A')} ({robot.get('skill_score', 0)})",
+                f"Kazandiran hamle orani | {enemy.get('win_like_rate', 0)} | {robot.get('win_like_rate', 0)}",
+                f"Son 30 ortalama puan | {enemy30.get('avg_points', 0)} | {robot30.get('avg_points', 0)}",
+                f"Son 30 ortalama patlama | {enemy30.get('avg_explosions', 0)} | {robot30.get('avg_explosions', 0)}",
+                f"Karsi-olgusal fark (farkli sutun olsaydi) | {enemy30.get('counterfactual_gap', 0)} | {robot30.get('counterfactual_gap', 0)}",
+                "",
+                "## 4) Karar ve Karsilastirma Ajani",
+                f"- Son stil: {last_directive.get('style', 'N/A')}",
+                f"- Hedef kolonlar: {last_directive.get('target_cols', [])}",
+                f"- Mantikli secim orani: %{int((last_directive.get('logical_ratio', 0.7) or 0.7) * 100)}",
+                f"- Ozgur secim orani: %{int((last_directive.get('freedom_ratio', 0.3) or 0.3) * 100)}",
+                f"- Rastgele red olay sayisi: {fusion.get('random_reject_events', 0)}",
+                f"- Mantik secim olay sayisi: {fusion.get('logic_choice_events', 0)}",
+                "",
+                "## 5) Gazi Komut Emri",
+                f"- {last_directive.get('command_text', 'Henuz komut uretilmedi')}",
+                "",
+                "## 6) Strateji Sozlugu",
+                "- Guvenli Yigma: Tasma riskini azaltir.",
+                "- Maksimum Potansiyel: Patlama firsatini zorlar.",
+                "- Denge: Risk-puan ortasi oynar.",
+                "- Kombo Avcisi: Zincir patlamalari kovalar.",
+                "- Dusuk Risk: Guvenli kolon secer.",
+                "- Merkez Kontrolu: Orta kolon dengesini korur.",
+                "- Kenar Baskisi: Kenarlardan baski kurar.",
+                "- Kilit Ustasi: Kilit deseni kurar.",
+                "- 9 Toplam Odagi: Sum9 odakli oynar.",
+                "- Hayatta Kalma Karmasi: Kritik anda savunmaya gecer.",
+                "",
+                "## 7) Oneri Motoru Sozlugu",
+                "- Hafif Mutasyon: Kucuk varyasyonlarla guvenli iyilestirme.",
+                "- Agresif Mutasyon: Hizli kazanclari denemek icin buyuk varyasyon.",
+                "- Risk Dengeleyici: Tasma riski ile puani dengelemeye calisir.",
+                "- Kombo Guclendirici: Patlama zinciri uretmeye odaklanir.",
+                "- Kararlilik Koruyucu: Tahtayi dagitmadan istikrarli oyun hedefler.",
+                "",
+                f"Not: Oyuncu = {player_name}, Robot = AI ajanli sistem.",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _refresh_analysis_window(self):
+        if self.analysis_win is None or not self.analysis_win.winfo_exists() or self.analysis_text is None:
+            return
+        self.analysis_text.configure(state="normal")
+        self.analysis_text.delete("1.0", "end")
+        payload = self._analysis_text_payload()
+        self.analysis_text.insert("1.0", payload)
+
+        self.analysis_text.tag_configure("main_header", foreground="#e2e8f0", background="#1d4ed8", font=("Segoe UI", 13, "bold"), spacing1=10, spacing3=8)
+        self.analysis_text.tag_configure("section_header", foreground="#f8fafc", background="#334155", font=("Segoe UI", 11, "bold"), spacing1=8, spacing3=4)
+        self.analysis_text.tag_configure("table_line", foreground="#cbd5e1", background="#0f172a", font=("Consolas", 10, "normal"))
+        self.analysis_text.tag_configure("normal_line", foreground="#dbeafe", background="#0b1220", font=("Segoe UI", 10, "normal"))
+
+        for idx, line in enumerate(payload.splitlines(), start=1):
+            start = f"{idx}.0"
+            end = f"{idx}.end"
+            if line.startswith("## GAZI ANALIZ PANOSU"):
+                self.analysis_text.tag_add("main_header", start, end)
+            elif line.startswith("## "):
+                self.analysis_text.tag_add("section_header", start, end)
+            elif "|" in line and not line.startswith("Not:"):
+                self.analysis_text.tag_add("table_line", start, end)
+            else:
+                self.analysis_text.tag_add("normal_line", start, end)
+
+        self.analysis_text.configure(state="disabled")
+
+    def show_analysis_window(self, _event=None):
+        if self.analysis_win is not None and self.analysis_win.winfo_exists():
+            self.analysis_win.lift()
+            self._refresh_analysis_window()
+            return
+
+        self.analysis_win = tk.Toplevel(self.root)
+        self.analysis_win.title("Robot Analiz Penceresi (H)")
+        self.analysis_win.geometry("980x720")
+        self.analysis_win.minsize(820, 560)
+
+        frm = tk.Frame(self.analysis_win, bg="#0f172a")
+        frm.pack(fill="both", expand=True)
+
+        self.analysis_text = tk.Text(
+            frm,
+            wrap="word",
+            bg="#0b1220",
+            fg="#dbeafe",
+            insertbackground="#dbeafe",
+            font=("Segoe UI", 10),
+        )
+        self.analysis_text.pack(fill="both", expand=True, padx=8, pady=8)
+        self.analysis_text.configure(state="disabled")
+        self._refresh_analysis_window()
+
     def _analysis_value_note(self, metric_name, player_value, robot_value):
         key = str(metric_name or "").lower()
         try:
@@ -1790,10 +1942,10 @@ class VersusGame:
             body.append(f"{metric}\t{p}\t{r}\t{comment}")
         return "\n".join(body)
 
-    def _refresh_analysis_window(self):
-        if self.analysis_win is None or not self.analysis_win.winfo_exists():
+    def _refresh_dashboard_window(self):
+        if self.dashboard_win is None or not self.dashboard_win.winfo_exists():
             return
-        widgets = self.analysis_widgets
+        widgets = self.dashboard_widgets
         if not widgets:
             return
 
@@ -2014,28 +2166,28 @@ class VersusGame:
         widgets["table_strategy"].insert("1.0", strategy_table_text)
         widgets["table_strategy"].configure(state="disabled")
 
-    def show_analysis_window(self, _event=None):
-        if self.analysis_win is not None and self.analysis_win.winfo_exists():
-            self.analysis_win.lift()
-            self._refresh_analysis_window()
+    def show_dashboard_window(self, _event=None):
+        if self.dashboard_win is not None and self.dashboard_win.winfo_exists():
+            self.dashboard_win.lift()
+            self._refresh_dashboard_window()
             return
 
-        self.analysis_win = tk.Toplevel(self.root)
-        self.analysis_win.title("Robot Analiz Paneli (H/J)")
-        self.analysis_win.geometry("1200x780")
-        self.analysis_win.minsize(980, 640)
-        self.analysis_widgets = {}
+        self.dashboard_win = tk.Toplevel(self.root)
+        self.dashboard_win.title("GAZI Analiz Dashboard (J)")
+        self.dashboard_win.geometry("1200x780")
+        self.dashboard_win.minsize(980, 640)
+        self.dashboard_widgets = {}
 
-        style = ttk.Style(self.analysis_win)
+        style = ttk.Style(self.dashboard_win)
         style.configure("Card.TLabelframe", background="#0f172a", foreground="#e2e8f0")
         style.configure("Card.TLabelframe.Label", background="#0f172a", foreground="#e2e8f0", font=("Segoe UI", 11, "bold"))
 
-        root = tk.Frame(self.analysis_win, bg="#0b1220")
+        root = tk.Frame(self.dashboard_win, bg="#0b1220")
         root.pack(fill="both", expand=True, padx=10, pady=10)
 
         hdr = tk.Label(
             root,
-            text="GAZI ANALIZ DASHBOARD - H/J",
+            text="GAZI ANALIZ DASHBOARD - J",
             bg="#1d4ed8",
             fg="#f8fafc",
             font=("Segoe UI", 14, "bold"),
@@ -2093,7 +2245,7 @@ class VersusGame:
         )
         txt_legend.configure(state="disabled")
 
-        self.analysis_widgets = {
+        self.dashboard_widgets = {
             "card_decision": txt_decision,
             "card_proposal": txt_proposal,
             "card_projection": txt_projection,
@@ -2101,7 +2253,7 @@ class VersusGame:
             "table_strategy": txt_strategy,
         }
 
-        self._refresh_analysis_window()
+        self._refresh_dashboard_window()
 
     def _ensure_player_name(self):
         current_name = str(self.profile.get("player_name", "")).strip()
@@ -3377,6 +3529,8 @@ class VersusGame:
             self.last_agent_follow = time.time()
         if self.analysis_win is not None and self.analysis_win.winfo_exists():
             self._refresh_analysis_window()
+        if self.dashboard_win is not None and self.dashboard_win.winfo_exists():
+            self._refresh_dashboard_window()
         self.draw()
         self.root.after(33, self.tick)
 
