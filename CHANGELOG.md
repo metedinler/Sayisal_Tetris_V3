@@ -73,3 +73,10 @@ Kurallar:
 - Ogrenme verisi silinmeden odul-ceza ve kural bonusu mode bagli sekilde uygulanmaya baslandi.
 - `Tum Loglari Isle (Uzun Surer)` menusu ile toplu replay egitimi eklendi.
 - Yukari itme davranisi sutun bazli fiziksel kaydirma mantigina yaklastirildi.
+
+## 2026-03-19 - Zor Mod Skor Maksimizasyonu ve Profil Gorunurlugu
+- Zor modda robot karar puanina acik skor-itkisi biasi eklendi (patlama potansiyeli + skor odakli agirliklandirma).
+- Agresif/savunmaci/dengeli profil farklari secim skoruna dogrudan yansitildi; davranis ayrimi daha belirgin hale getirildi.
+- Oneri degerlendirmesinde zor mod ek puanlama katsayilari guclendirildi; uygun durumda onerinin uygulanma olasiligi arttirildi.
+- Tur sonu `guided_reward` zor modda skor farki ve profil odakli ceza/bonuslarla guncellendi.
+- Sag panelde oyun modu, robot profili, aktif hedef, profil davranisi ve skor/guvenlik itkisi canli olarak gosterilmeye baslandi.

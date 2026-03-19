@@ -358,6 +358,33 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 - Son calinan track kaydedilir; sonraki acilista bir sonraki track ile devam edilir.
 - Liste bitince dairesel olarak basa doner.
 
+## 17. Zor Mod Skor Maksimizasyonu ve Profil Ayrimi (Append-Only)
+
+### 17.1 Karar puani bileşimi
+- `RobotLearner.choose_action` icinde final hamle puani artik su katmanlardan olusur:
+	- MiniNN cikisi + strateji havuzu skoru
+	- Profil biasi (agresif/savunmaci/dengeli)
+	- Mod biasi (kolay/normal/zor)
+- Zor mod biasi, patlama potansiyeli ve skor itkisini arttirarak puan odakli secimi one cikarir.
+
+### 17.2 Oneri gecidi (proposal)
+- Oneri skoru zor modda ayni skor-itkisi formuluyle tekrar degerlendirilir.
+- Oneri seceneginin baz secime gore puan avantaji yeterliyse gecit daha istekli sekilde uygular.
+
+### 17.3 Guided reward tuning
+- Tur sonu ogrenme odulu (`guided_reward`) zor modda skor farki, risk ve profil odakli bonus/cezalarla hesaplanir.
+- Agresif profil: potansiyel patlama ve skor farki avantajina ek bonus.
+- Savunmaci profil: risk dusurme odakli bonus.
+- Dengeli profil: skor ve guvenlik arasinda orta agirlik.
+
+### 17.4 Gozlenebilirlik
+- Sag panelde su alanlar canli olarak yayinlanir:
+	- Oyun modu
+	- Robot profili
+	- Aktif hedef metni
+	- Profil davranis metni
+	- Skor itkisi / Guvenlik itkisi
+
 ### 16.3 Teknik not
 - SID calicisi `python-vlc` kutuphanesi ile yonetilir.
 - Ses modu degisimi menuden aninda uygulanir ve `ai_memory/audio_settings.json` icinde saklanir.

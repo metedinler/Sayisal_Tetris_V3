@@ -819,8 +819,29 @@ class RobotLearner:
             elif robot_profile == ROBOT_PROFILE_DEFENSIVE:
                 nn_weight = 0.72
                 strat_weight = 0.28
-            final = nn_score * nn_weight + strat_score * strat_weight
-            candidates.append((col, x, nn_score, strat_score, final, best_str["name"]))
+            potential_raw = potential_sum9_count(board, current_num, col) + potential_lock_count(board, current_num, col)
+            risk_val = risk_score(board, col)
+            score_drive = (x[8] * 1.4) + (x[9] * 1.7) + (max(0.0, 1.0 - risk_val) * 0.9)
+            safety_drive = (x[11] * 1.2) + (x[10] * 0.6) - (x[6] * 0.8)
+
+            profile_bias = 0.0
+            if robot_profile == ROBOT_PROFILE_AGGRESSIVE:
+                profile_bias = (potential_raw * 0.12) - (risk_val * 0.05)
+            elif robot_profile == ROBOT_PROFILE_DEFENSIVE:
+                profile_bias = (safety_drive * 0.14) - (potential_raw * 0.03)
+            else:
+                profile_bias = (potential_raw * 0.06) + (safety_drive * 0.06)
+
+            mode_bias = 0.0
+            if game_mode == GAME_MODE_HARD:
+                mode_bias = (potential_raw * 0.18) + (score_drive * 0.35) - (max(0.0, risk_val - 0.45) * 0.25)
+            elif game_mode == GAME_MODE_EASY:
+                mode_bias = (safety_drive * 0.20) - (potential_raw * 0.04)
+            else:
+                mode_bias = (potential_raw * 0.08) + (safety_drive * 0.10)
+
+            final = nn_score * nn_weight + strat_score * strat_weight + profile_bias + mode_bias
+            candidates.append((col, x, nn_score, strat_score, final, best_str["name"], potential_raw, risk_val, score_drive, safety_drive))
 
         if not candidates:
             return 0, {
@@ -851,7 +872,7 @@ class RobotLearner:
             chosen = max(candidates, key=lambda t: t[4])
             reason = "Ogrenme modeli + strateji puanina gore secim"
 
-        chosen_col, x, nn_score, strat_score, final_score, strategy_name = chosen
+        chosen_col, x, nn_score, strat_score, final_score, strategy_name, potential_hint, risk_hint, score_drive, safety_drive = chosen
 
         proposal = self.strategy_engine.suggest(board, current_num, next_num, level, turn_index=self.decision_count)
         used_proposal = False
@@ -865,12 +886,14 @@ class RobotLearner:
                 p_h = [1.0 - px[7], px[8], px[9], px[10], px[11], random.random() * 0.2]
                 cw = proposal["candidate"]["w"]
                 p_str = cw[0] * p_h[0] + cw[1] * p_h[1] + cw[2] * p_h[2] + cw[3] * p_h[3] + cw[4] * p_h[4] + cw[5] * p_h[5]
-                proposal_score = p_nn * 0.60 + p_str * 0.40
+                proposal_score = p_nn * 0.58 + p_str * 0.42
 
                 r = risk_score(board, chosen_col)
                 if game_mode == GAME_MODE_HARD:
-                    rule_boost = (potential_sum9_count(board, current_num, pcol) + potential_lock_count(board, current_num, pcol)) * 0.08
-                    proposal_score += rule_boost
+                    p_potential = potential_sum9_count(board, current_num, pcol) + potential_lock_count(board, current_num, pcol)
+                    p_risk = risk_score(board, pcol)
+                    p_score_drive = (px[8] * 1.4) + (px[9] * 1.7) + (max(0.0, 1.0 - p_risk) * 0.9)
+                    proposal_score += (p_potential * 0.18) + (p_score_drive * 0.35) - (max(0.0, p_risk - 0.45) * 0.25)
                 elif game_mode == GAME_MODE_EASY:
                     proposal_score -= 0.04
 
@@ -886,6 +909,10 @@ class RobotLearner:
                     strat_score = p_str
                     final_score = proposal_score
                     strategy_name = proposal["candidate"]["name"]
+                    potential_hint = potential_sum9_count(board, current_num, chosen_col) + potential_lock_count(board, current_num, chosen_col)
+                    risk_hint = risk_score(board, chosen_col)
+                    score_drive = (x[8] * 1.4) + (x[9] * 1.7) + (max(0.0, 1.0 - risk_hint) * 0.9)
+                    safety_drive = (x[11] * 1.2) + (x[10] * 0.6) - (x[6] * 0.8)
                     decision = "proposal_applied"
                     reason = f"Yeni strateji onerisi kabul edildi ({proposal.get('engine_name', 'unknown_engine')})"
                     self.strategy_engine.maybe_add_strategy(proposal["candidate"])
@@ -893,9 +920,25 @@ class RobotLearner:
                     decision = "proposal_rejected"
                     reason = f"Yeni strateji onerisi reddedildi ({proposal.get('engine_name', 'unknown_engine')})"
 
-        potential = potential_sum9_count(board, current_num, chosen_col) + potential_lock_count(board, current_num, chosen_col)
-        risk_val = risk_score(board, chosen_col)
-        priority = "Patlama" if potential > 0 else ("Puan" if risk_val < 0.5 else "Güvenlik")
+        potential = potential_hint
+        risk_val = risk_hint
+        objective = {
+            GAME_MODE_EASY: "Hata toleransi yuksek, guvenli oyna",
+            GAME_MODE_NORMAL: "Dengeyi koru, puani artisli topla",
+            GAME_MODE_HARD: "Maksimum puan ve hamle ustunlugu",
+        }.get(game_mode, "Dengeli karar")
+        profile_style = {
+            ROBOT_PROFILE_BALANCED: "Dengeli risk ve puan",
+            ROBOT_PROFILE_AGGRESSIVE: "Yuksek patlama ve skor baskisi",
+            ROBOT_PROFILE_DEFENSIVE: "Dusuk risk ve guvenli kurulum",
+        }.get(robot_profile, "Dengeli risk ve puan")
+
+        if game_mode == GAME_MODE_HARD:
+            priority = "Skor Patlamasi" if potential > 0 else "Skor Baskisi"
+        elif robot_profile == ROBOT_PROFILE_DEFENSIVE:
+            priority = "Guvenli Kurulum" if risk_val < 0.45 else "Savunma"
+        else:
+            priority = "Patlama" if potential > 0 else ("Puan" if risk_val < 0.5 else "Guvenlik")
 
         meta = {
             "strategy": strategy_name,
@@ -903,6 +946,12 @@ class RobotLearner:
             "potential_explosions": potential,
             "risk": round(risk_val, 3),
             "priority": priority,
+            "objective": objective,
+            "profile_style": profile_style,
+            "score_drive": round(score_drive, 3),
+            "safety_drive": round(safety_drive, 3),
+            "mode": game_mode,
+            "profile": robot_profile,
             "proposal": proposal,
             "used_proposal": used_proposal,
             "decision": decision,
@@ -1812,15 +1861,26 @@ class VersusGame:
 
         if self.robot_meta and isinstance(self.robot_meta.get("x"), list):
             mode = self.game_mode_var.get()
+            profile = self.robot_profile_var.get()
             player_points = float(player_result.get("points", 0) or 0)
             robot_points = float(robot_result.get("points", 0) or 0)
             penalty = max(0.0, player_points - robot_points)
             risk_penalty = max(0.0, float(self.robot_meta.get("risk", 0.0)) * 2.0)
+            score_gap = robot_points - player_points
+            rule_bonus = self._robot_rule_bonus(robot_result)
+            potential = float(self.robot_meta.get("potential_explosions", 0) or 0)
+            risk_val = float(self.robot_meta.get("risk", 0.0) or 0.0)
             guided_reward = robot_points
             if mode == GAME_MODE_NORMAL:
-                guided_reward = robot_points - (penalty * 0.45) - risk_penalty + (self._robot_rule_bonus(robot_result) * 0.5)
+                guided_reward = robot_points - (penalty * 0.45) - risk_penalty + (rule_bonus * 0.5)
             elif mode == GAME_MODE_HARD:
-                guided_reward = robot_points - (penalty * 0.9) - (risk_penalty * 1.3) + self._robot_rule_bonus(robot_result)
+                guided_reward = (robot_points * 1.35) + (score_gap * 0.85) - (penalty * 1.15) - (risk_penalty * 1.35) + (rule_bonus * 1.25)
+                if profile == ROBOT_PROFILE_AGGRESSIVE:
+                    guided_reward += (potential * 0.8) + (max(0.0, score_gap) * 0.35)
+                elif profile == ROBOT_PROFILE_DEFENSIVE:
+                    guided_reward += (max(0.0, 0.50 - risk_val) * 1.8) - (max(0.0, -score_gap) * 0.25)
+                else:
+                    guided_reward += (max(0.0, 0.40 - risk_val) * 1.0) + (score_gap * 0.2)
             self.robot_ai.learn_from_move(
                 self.robot_meta["x"],
                 guided_reward,
@@ -1964,7 +2024,7 @@ class VersusGame:
 
         if meta:
             self.push_reason(
-                f"Robot secimi: sutun {self.robot_col}, strateji {meta.get('strategy', 'N/A')}, karar {meta.get('decision', 'N/A')}, risk {meta.get('risk', 0)}",
+                f"Robot secimi: sutun {self.robot_col}, strateji {meta.get('strategy', 'N/A')}, karar {meta.get('decision', 'N/A')}, oncelik {meta.get('priority', 'N/A')}, risk {meta.get('risk', 0)}",
                 "decision",
             )
 
@@ -2146,6 +2206,12 @@ class VersusGame:
             f"En yuksek skor ({self.player_name}): {int(self.profile.get('best_player_score', 0))}",
             f"En yuksek skor (Robot): {int(self.profile.get('best_robot_score', 0))}",
             f"En yuksek seviye: {int(self.profile.get('best_level', 1))}",
+            "",
+            f"Oyun modu: {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
+            f"Robot profili: {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
+            f"Hedef: {self.robot_meta.get('objective', 'Veri toplama') if self.robot_meta else 'Veri toplama'}",
+            f"Profil davranisi: {self.robot_meta.get('profile_style', 'Dengeli risk ve puan') if self.robot_meta else 'Dengeli risk ve puan'}",
+            f"Skor itkisi: {self.robot_meta.get('score_drive', 0) if self.robot_meta else 0} | Guvenlik itkisi: {self.robot_meta.get('safety_drive', 0) if self.robot_meta else 0}",
             "",
             f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
             f"Strateji Slotlari: ACIK {self.robot_ai.strategy_engine.active_count()} / KAPALI {max(0, 30 - self.robot_ai.strategy_engine.active_count())}",

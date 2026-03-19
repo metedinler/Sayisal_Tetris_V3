@@ -259,3 +259,13 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - Normal mod odul + orta seviye ceza (geri kalma/risk) ile egitilir.
 - Zor mod odul + daha guclu ceza + kural bonusu (patlama/risk) ile egitilir.
 - `Ozellikler -> Tum Loglari Isle (Uzun Surer)` ile loglar toplu replay egitimine alinabilir.
+
+## Zor Mod ve Profil Davranisi Eki (Append-Only)
+
+### 2026-03-19 - Davranis netlestirmesi (TR)
+- Zor modda robot secimi dogrudan skor maksimizasyonuna biaslanmistir.
+- Karar puani icine patlama potansiyeli + skor itkisi + risk duzeltmesi birlikte eklenmistir.
+- Agresif profil daha cok patlama/skor baskisi uygular.
+- Savunmaci profil daha dusuk riskli kurulumlari onceliklendirir.
+- Dengeli profil iki yaklasimi orta duzeyde birlestirir.
+- Sag panelde `Hedef`, `Profil davranisi`, `Skor itkisi` ve `Guvenlik itkisi` canli gorunur.
