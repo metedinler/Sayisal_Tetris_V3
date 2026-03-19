@@ -2710,13 +2710,14 @@ class VersusGame:
             flash_style="robot",
         )
 
-        title_x = LEFT_X + BOARD_W + (GAP_BETWEEN_BOARDS // 2)
+        title_x = LEFT_X + BOARD_W + 16
         self.canvas.create_text(
             title_x,
-            TOP_Y - 20,
+            TOP_Y - 8,
+            anchor="sw",
             text="Sayisal TETRIS",
             fill="#f8fafc",
-            font=("Times New Roman", 24, "bold"),
+            font=("Garamond", 30, "bold"),
         )
 
         # Orta panel: tur/seviye + sonraki sayilar
