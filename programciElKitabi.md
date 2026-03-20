@@ -502,3 +502,80 @@ Bu yapi ile puan dagilimi tek yerden degistirilebilir.
 	- `gazi_agents_log.jsonl`
 	- `breakpoint_agent_log.jsonl`
 	- `pattern_watch_agent_log.jsonl`
+
+## 22. v3.10.1 Dashboard Mimarisi ve Gozlemlenebilirlik (Append-Only)
+
+### 22.1 H paneli
+- `show_analysis_window` 3x3 yerlesimli, scrollable bir kabuk icinde 9 kart uretir.
+- Kartlar tek tip tablo metni ile doldurulur:
+	- `1) Canli Ozet`
+	- `2) Ajan Onerileri`
+	- `3) Aday Siralamasi`
+	- `4) Sinir Agi Geri Besleme`
+	- `5) Odul / Ceza`
+	- `6) Oyuncu Analitigi`
+	- `7) Kirilma Izleyici`
+	- `8) Desen Izleyici`
+	- `9) Gazi Komutlari`
+- H panelinde orta kolon dar, sag kolon genis tutulur; uzun strateji ve aday satirlari sag tarafta daha rahat gorunur.
+
+### 22.2 J paneli
+- `show_dashboard_window` 2 kolonlu 6 kart uretir.
+- J paneli, H'nin ozetlenmis ama tabloya donusturulmus halidir:
+	- `1) Robot Karar Tablosu`
+	- `2) Oneri ve Gazi Tablosu`
+	- `3) 30 Hamle Ongoru Tablosu`
+	- `4) Izleme Tablosu`
+	- `5) Strateji Agirlik Tablosu`
+	- `6) Tum Ajan Onerileri ve Eksik Olcutler`
+
+### 22.3 Ortak metin uretim katmani
+- `_tableize_records`, `_table_blocks_text` ve `_safe_set_widget_text` yardimcilari dashboard kutularini tek formatta doldurur.
+- Text widget'lar `readonly` davranisi ile korunur; secim ve kaydirma acik kalirken duzenleme kapatilir.
+- Satirlar gorunurlugu arttirmak icin siritli (striped) arka plan tag'leri ile boyanir.
+
+## 23. v3.10.1 Performans, Yenileme ve Baslangic Akisi (Append-Only)
+
+### 23.1 Tick dongusu
+- `tick()` halen ana GUI dongusudur ve `root.after(33, self.tick)` ile devam eder.
+- Ancak agir analiz pencereleri her dongude tam cizilmez; `analysis_refresh_interval` ve `dashboard_refresh_interval` ile sinirlanir.
+- Dashboard widget'inda son gosterilen metin `_last_rendered_text` alaninda tutulur; degismeyen icerik yeniden yazilmaz.
+
+### 23.2 Ajan takip stratejisi
+- PatternWatch bagimsiz taramasi kendi `scan_interval` mantigi ile throttle edilir.
+- Gazi log takibi `agent_follow_interval` ile aralikli cagrilir.
+- Bu sayede canli oyun akisi, analiz pencereleri acikken bile GUI thread uzerinde daha hafif kalir.
+
+### 23.3 Baslangic maliyeti azaltma
+- `BreakpointMomentumAgent.run_historical_analysis(deep=False)` ile acilista hafif tarama yapilir.
+- `PatternWatchAgent.analyze_all_logs(deep=False)` ile ilk acilis taramasi sinirli tutulur.
+- Derin tarama davranisi menu komutlari ve startup automation tercihleri ile sonradan tetiklenebilir.
+
+## 24. v3.10.1 Windows Runtime ve Paketleme Notlari (Append-Only)
+
+### 24.1 Kaynak koddan calistirma
+- `run_v3_windows.bat`, `py` launcher'a bagli kalmak yerine bu makinedeki `Python312` kurulumunu dogrudan tercih eder.
+- Kaynak kodun basinda `tkinter` importu korumali yapidadir; yanlis yorumlayici ile acilma durumunda kullaniciya dogru komut yazdirilir.
+
+### 24.2 Frozen runtime yolu
+- `if getattr(sys, "frozen", False): ROOT_DIR = os.path.dirname(sys.executable)` kuralina gore EXE kendi kok klasorunde calisir.
+- Bu nedenle frozen paket icin `logs/`, `ai_memory/`, `Sid/` ve dokumantasyon dosyalari EXE'nin yaninda tutulur.
+
+### 24.3 Tkinter paketleme detayi
+- Bu Python kurulumunda PyInstaller, `tkinter`'i otomatik algilamada kararsiz davranabildigi icin spec dosyasinda explicit veri toplama yapilir.
+- `SayisalTetrisV3_x64.spec` icinde:
+	- `Lib/tkinter` klasoru
+	- `_tcl_data`
+	- `_tk_data`
+  acikca frozen pakete eklenir.
+- Bu yapi, `ModuleNotFoundError: tkinter` ve `Tcl data directory not found` sinifindaki Windows frozen hatalarini azaltmak icin kullanilir.
+
+### 24.4 Dagitim zip'i
+- Dagitim kopyasi, ham `dist` klasorunun tamamini oldugu gibi arsivlemek yerine secili calisan dosyalarla temiz staging klasoru uzerinden ziplenmelidir.
+- Paket kokunde en az su dosyalar bulunur:
+	- `SayisalTetrisV3_x64.exe`
+	- `README.md`
+	- `CHANGELOG.md`
+	- `programciElKitabi.md`
+	- `ogrenme.md`
+	- `Sid/`

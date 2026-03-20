@@ -5,8 +5,18 @@ import random
 import sys
 import threading
 import time
-import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+try:
+    import tkinter as tk
+    from tkinter import messagebox, simpledialog, ttk
+except ModuleNotFoundError as ex:
+    if getattr(ex, "name", "") == "tkinter":
+        print("Bu Python kurulumunda tkinter bulunamadi.", file=sys.stderr)
+        print("Programi su yorumlayici ile acabilirsiniz:", file=sys.stderr)
+        print(r"C:\Users\mete\AppData\Local\Programs\Python\Python312\python.exe tetris_v3_windows_ai.py", file=sys.stderr)
+        print("Alternatif olarak derlenmis EXE'yi kullanabilirsiniz:", file=sys.stderr)
+        print(r".\dist\SayisalTetrisV3_x64.exe", file=sys.stderr)
+        sys.exit(1)
+    raise
 import uuid
 from collections import deque
 from datetime import datetime

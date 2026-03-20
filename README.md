@@ -31,6 +31,10 @@ Oyun pencereli (Windows GUI) calisir.
 - `Space` veya `Enter`: normal birak
 - `S` veya `Asagi Ok`: hizli birak
 - `B`: bekleme modu ac/kapat
+- `H`: detayli analiz penceresi
+- `J`: ozet analiz panosu
+- `R`: maci yeniden baslat
+- `F11`: tam ekran ac/kapat
 - `Q` veya `Esc`: cikis
 
 ### Oyun Sonu Kurallari
@@ -42,6 +46,13 @@ Oyun pencereli (Windows GUI) calisir.
 ### Menu
 - `Ozellikler` -> `Bekleme Modu (B)`
 - `Ozellikler` -> `Simdi Log Analizi`
+- `Ozellikler` -> `Tum Loglari Isle (Uzun Surer)`
+- `Ozellikler` -> `Gazi Ajanlari Simdi Calistir`
+- `Ozellikler` -> `Gazi Ajanlari Derin Analiz`
+- `Ozellikler` -> `Desen Izleyici Simdi Tara`
+- `Ozellikler` -> `Analiz Penceresi (H)`
+- `Ozellikler` -> `Analiz Panosu (J)`
+- `Ozellikler` -> `Yeniden Baslat (R)`
 - `Yardim` -> `Hakkinda`
 
 ### Calistirma
@@ -50,7 +61,11 @@ run_v3_windows.bat
 ```
 veya
 ```bat
-py tetris_v3_windows_ai.py
+C:\Users\mete\AppData\Local\Programs\Python\Python312\python.exe tetris_v3_windows_ai.py
+```
+veya
+```bat
+dist\SayisalTetrisV3_x64.exe
 ```
 
 ### Deneme Akisi
@@ -66,6 +81,10 @@ py tetris_v3_windows_ai.py
 - `run_v3_windows.bat`: Baslatici
 - `logs/`: Oyun loglari (benzersiz isimli)
 - `ai_memory/`: Robot ogrenme durumu
+- `gazi_mode_agents.py`: Gazi guidance ve 3-ajan koordinasyonu
+- `breakpoint_agent.py`: kirilma ve niyet analizi
+- `pattern_watch_agent.py`: surekli log tarama ve warning uretimi
+- `sid_player.py`: SID muzik surec yonetimi
 
 ## English
 
@@ -98,6 +117,10 @@ The game runs in a Windows GUI window.
 - `Space` or `Enter`: normal drop
 - `S` or `Down`: fast drop
 - `B`: toggle wait mode
+- `H`: open detailed analysis window
+- `J`: open compact analysis dashboard
+- `R`: restart match
+- `F11`: toggle fullscreen
 - `Q` or `Esc`: quit
 
 ### End Conditions
@@ -112,7 +135,11 @@ run_v3_windows.bat
 ```
 or
 ```bat
-py tetris_v3_windows_ai.py
+C:\Users\mete\AppData\Local\Programs\Python\Python312\python.exe tetris_v3_windows_ai.py
+```
+or
+```bat
+dist\SayisalTetrisV3_x64.exe
 ```
 
 ### Quick Test Flow
@@ -319,3 +346,26 @@ Asagidaki maddeler son surumlerde eklenen davranislari aciklar. Bu bolum append 
 - Added pre-move candidate evaluation snapshots to each robot decision log.
 - Added independent continuous log miner (`pattern_watch_agent.py`) that feeds warning signals into Gazi guidance.
 - Added richer breakpoint intent metrics for special-tile rationality, sum-9 intent, and future-piece planning.
+
+## 2026-03-20 - v3.10.1 Dashboard, Baslatici ve Dagitim Eki (Append-Only)
+
+### Program analizi ozeti (TR)
+- Ana runtime `tetris_v3_windows_ai.py` icinde MiniNN ogrenme, strateji motoru, Gazi guidance, Kirilma Izleyici ve Desen Izleyici ayni karar akisinda birlikte calisir.
+- `H` penceresi 9 tabloluk detayli analiz ekranidir: canli ozet, ajan onerileri, aday siralamasi, sinir agi geri besleme, odul/ceza, oyuncu analitigi, kirilma izleyici, desen izleyici ve Gazi komutlari.
+- `J` penceresi 6 tabloluk ozet ekranidir: robot karar tablosu, oneri ve Gazi tablosu, 30 hamle ongorusu, izleme tablosu, strateji agirliklari ve gelismis ajan/aday bloklari.
+- Her iki ekran da salt-okunur, kaydirilabilir ve sutunlu tablo metni ile uretildigi icin oyun icinden dogrudan canli gozlem saglar.
+
+### Performans notlari (TR)
+- Dashboard yenilemeleri throttle ile sinirlandirilir; degismeyen tablo icerigi yeniden widget'a yazilmaz.
+- Acilista kirilma ve pattern ajanlari hafif tarama ile baslar; derin tarama menu veya otomasyon ile ayrica calistirilir.
+- Gazi log takibi de aralikli calisir; bu sayede H/J panolari acikken CPU yukunde gozle gorulur azalma hedeflenir.
+
+### Baslatma ve paketleme notlari (TR)
+- `run_v3_windows.bat`, bu makinede dogrudan `C:\Users\mete\AppData\Local\Programs\Python\Python312\python.exe` yorumlayicisini tercih eder.
+- Kaynak kod yanlis Python ile acilirse `tkinter` eksikligini acik mesaja cevirip dogru komutu yazar.
+- `SayisalTetrisV3_x64.spec`, frozen build icin `tkinter`, `_tcl_data` ve `_tk_data` klasorlerini acikca paketler.
+- EXE calisirken kok yol olarak `dist` klasorunu kullandigi icin `logs/`, `ai_memory/` ve `Sid/` klasorleri dagitim kokunde tutulur.
+
+### Distribution note (EN)
+- The Windows package now carries explicit Tk/Tcl runtime data for the frozen executable.
+- The packaged app is intended to run from the `dist` root together with its documentation files and `Sid` assets.

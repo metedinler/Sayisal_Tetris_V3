@@ -9,6 +9,7 @@ base_prefix = Path(sys.base_prefix)
 tcl_root = base_prefix / "tcl"
 tcl_lib = tcl_root / "tcl8.6"
 tk_lib = tcl_root / "tk8.6"
+py_tk_lib = base_prefix / "Lib" / "tkinter"
 
 if tcl_lib.exists():
     os.environ["TCL_LIBRARY"] = str(tcl_lib)
@@ -20,6 +21,8 @@ if tcl_lib.exists():
     tk_datas.append((str(tcl_lib), "_tcl_data"))
 if tk_lib.exists():
     tk_datas.append((str(tk_lib), "_tk_data"))
+if py_tk_lib.exists():
+    tk_datas.append((str(py_tk_lib), "tkinter"))
 
 
 a = Analysis(

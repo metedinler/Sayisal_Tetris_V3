@@ -101,3 +101,13 @@ Kurallar:
 - Analiz dashboard'u H/J kisayollariyla acilir hale getirildi; metrik tablosuna niyet ve pattern satirlari eklendi.
 - Dokumantasyon guncellendi (README, programci el kitabi, ogrenme notu) ve dist kopyalari yenilendi.
 - Kaynak kod py_compile kontrolunden hatasiz gecti.
+
+## 2026-03-20 - v3.10.1 Dashboard Tablolari, Windows Baslatici ve Paketleme
+- H ve J analiz panolari tek tip tablo bloklari uretecek sekilde yeniden duzenlendi; H 9 kart, J 6 kart olarak scrollable ve sutunlu metin formatinda korunur.
+- Dashboard yenilemeleri throttle edildi; degismeyen widget metni yeniden yazilmadigi icin H/J acikken CPU yuku azaltildi.
+- Acilis taramalari hafifletildi: Breakpoint ve PatternWatch ilk yuklemede `deep=False` ile baslar, derin analiz menu/otomasyon ile ayrica calistirilir.
+- `run_v3_windows.bat` guncellendi; bu makinedeki `Python312` yorumlayicisini dogrudan tercih eder.
+- Kaynak kod baslangicina `tkinter` icin acik hata yonlendirmesi eklendi; yanlis Python ile acilis daha anlasilir hale getirildi.
+- `SayisalTetrisV3_x64.spec` frozen build icin `tkinter`, `_tcl_data` ve `_tk_data` paketlemesini explicit hale getirecek sekilde guncellendi.
+- Derlenmis Windows dagitim kopyasi temiz staging mantigi ile yeniden paketlenip zip artefakti uretildi.
+- README, Programci El Kitabi ve dist kopyalari programin guncel davranis analiziyle append-only mantikta guncellendi.
