@@ -4,8 +4,6 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
-
 
 base_prefix = Path(sys.base_prefix)
 tcl_root = base_prefix / "tcl"
@@ -18,10 +16,10 @@ if tk_lib.exists():
     os.environ["TK_LIBRARY"] = str(tk_lib)
 
 tk_datas = []
-for folder_name in ("tcl8.6", "tk8.6", "tcl8", "tix8.4.3", "dde1.4", "reg1.3", "nmake"):
-    source = tcl_root / folder_name
-    if source.exists():
-        tk_datas.append((str(source), f"tcl/{folder_name}"))
+if tcl_lib.exists():
+    tk_datas.append((str(tcl_lib), "_tcl_data"))
+if tk_lib.exists():
+    tk_datas.append((str(tk_lib), "_tk_data"))
 
 
 a = Analysis(
@@ -29,7 +27,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=tk_datas,
-    hiddenimports=collect_submodules('tkinter') + ['_tkinter'],
+    hiddenimports=['_tkinter'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
