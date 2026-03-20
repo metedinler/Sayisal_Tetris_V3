@@ -180,7 +180,7 @@ def strategy_display_name(name):
     if key in STRATEGY_LABELS_TR:
         return STRATEGY_LABELS_TR[key]
     if key.startswith("gen_"):
-        return f"Uretilmis Strateji ({key})"
+        return f"Üretilmiş Strateji ({key})"
     return key
 
 
@@ -189,22 +189,22 @@ def strategy_info_text(name):
     if key in STRATEGY_INFO_TR:
         return STRATEGY_INFO_TR[key]
     if key.startswith("gen_"):
-        return "O anda onerilen yeni aday strateji."
-    return "Strateji aciklamasi kayitli degil."
+        return "O anda önerilen yeni aday strateji."
+    return "Strateji açıklaması kayıtlı değil."
 
 
 def proposal_engine_display_name(name):
     key = str(name or "").strip()
     if not key:
-        return "Bilinmeyen Oneri Motoru"
+        return "Bilinmeyen Öneri Motoru"
     return PROPOSAL_ENGINE_LABELS_TR.get(key, key)
 
 
 def proposal_engine_info_text(name):
     key = str(name or "").strip()
     if not key:
-        return "Oneri motoru bilgisi yok."
-    return PROPOSAL_ENGINE_INFO_TR.get(key, "Oneri motoru aciklamasi kayitli degil.")
+        return "Öneri motoru bilgisi yok."
+    return PROPOSAL_ENGINE_INFO_TR.get(key, "Öneri motoru açıklaması kayıtlı değil.")
 
 
 def decision_display_name(decision):
@@ -223,9 +223,9 @@ def feed_filter_display_name(mode):
 
 def fmt4(value):
     try:
-        return f"{float(value):.4f}"
+        return f"{float(value):.3f}"
     except Exception:
-        return "0.0000"
+        return "0.000"
 
 
 def ascii_bar(value, max_value, width=20):
@@ -239,6 +239,20 @@ def ascii_bar(value, max_value, width=20):
         return "." * width
 
 
+def as_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        t = value.strip().lower()
+        if t in ("1", "true", "yes", "on", "acik"):
+            return True
+        if t in ("0", "false", "no", "off", "kapali"):
+            return False
+    return default
+
+
 def ensure_dirs():
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(MEMORY_DIR, exist_ok=True)
@@ -249,6 +263,14 @@ def default_profile():
     return {
         "player_name": "Oyuncu",
         "show_how_to_on_start": True,
+        "ui_game_mode": GAME_MODE_NORMAL,
+        "ui_robot_profile": ROBOT_PROFILE_BALANCED,
+        "ui_wait_mode": False,
+        "ui_feed_filter": "all",
+        "ui_show_profile_panel": True,
+        "ui_fullscreen": False,
+        "auto_run_gazi_on_start": False,
+        "auto_run_pattern_on_start": False,
         "total_matches": 0,
         "player_wins": 0,
         "player_losses": 0,
@@ -1316,10 +1338,11 @@ class VersusGame:
         self.profile = load_profile()
         self.audio_settings = load_audio_settings()
         self._ensure_player_name()
-        self.player_name = str(self.profile.get("player_name", "Oyuncu"))
+        self.player_name = str(self.profile.get("player_name", "Oyuncu")).upper()
+        self.profile["player_name"] = self.player_name
         self.match_recorded = False
 
-        self.root.title(f"Sayisal Tetris V3 - {self.player_name} vs Robot AI")
+        self.root.title(f"NUMTRIS V3 - {self.player_name} vs Robot AI")
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
         start_w = min(max(WIN_W, 1180), max(900, screen_w - 48))
@@ -1328,15 +1351,28 @@ class VersusGame:
         self.root.resizable(True, True)
         self.root.minsize(WIN_W, WIN_H)
 
-        self.wait_mode_var = tk.BooleanVar(value=False)
-        self.feed_filter_var = tk.StringVar(value="all")
+        saved_mode = str(self.profile.get("ui_game_mode", GAME_MODE_NORMAL))
+        if saved_mode not in GAME_MODE_LABELS:
+            saved_mode = GAME_MODE_NORMAL
+        saved_profile = str(self.profile.get("ui_robot_profile", ROBOT_PROFILE_BALANCED))
+        if saved_profile not in ROBOT_PROFILE_LABELS:
+            saved_profile = ROBOT_PROFILE_BALANCED
+        saved_filter = str(self.profile.get("ui_feed_filter", "all"))
+        if saved_filter not in FEED_FILTER_LABELS_TR:
+            saved_filter = "all"
+
+        self.wait_mode_var = tk.BooleanVar(value=as_bool(self.profile.get("ui_wait_mode", False), False))
+        self.feed_filter_var = tk.StringVar(value=saved_filter)
         mode = str(self.audio_settings.get("sound_mode", SOUND_MODE_WARNING_ONLY))
         if mode not in SOUND_MODE_LABELS:
             mode = SOUND_MODE_WARNING_ONLY
         self.sound_mode_var = tk.StringVar(value=mode)
-        self.game_mode_var = tk.StringVar(value=GAME_MODE_NORMAL)
-        self.robot_profile_var = tk.StringVar(value=ROBOT_PROFILE_BALANCED)
-        self.fullscreen_var = tk.BooleanVar(value=False)
+        self.game_mode_var = tk.StringVar(value=saved_mode)
+        self.robot_profile_var = tk.StringVar(value=saved_profile)
+        self.fullscreen_var = tk.BooleanVar(value=as_bool(self.profile.get("ui_fullscreen", False), False))
+        self.show_profile_panel_var = tk.BooleanVar(value=as_bool(self.profile.get("ui_show_profile_panel", True), True))
+        self.auto_run_gazi_on_start_var = tk.BooleanVar(value=as_bool(self.profile.get("auto_run_gazi_on_start", False), False))
+        self.auto_run_pattern_on_start_var = tk.BooleanVar(value=as_bool(self.profile.get("auto_run_pattern_on_start", False), False))
         self._build_menu()
 
         self.canvas = tk.Canvas(root, width=WIN_W, height=WIN_H, bg="#0b1220", highlightthickness=0)
@@ -1367,15 +1403,21 @@ class VersusGame:
         self.logger = GameLogger()
         self.gazi_agents = GaziModeCoordinator(MEMORY_DIR, LOG_DIR)
         self.breakpoint_agent = BreakpointMomentumAgent(ROOT_DIR, LOG_DIR, MEMORY_DIR)
-        self.breakpoint_agent.run_historical_analysis(deep=True)
+        self.breakpoint_agent.run_historical_analysis(deep=False)
         self.pattern_watch_agent = PatternWatchAgent(ROOT_DIR, LOG_DIR, MEMORY_DIR)
-        self.pattern_watch_agent.analyze_all_logs(deep=True)
+        self.pattern_watch_agent.analyze_all_logs(deep=False)
         self.breakpoint_signal = {}
         self.pattern_watch_signal = {}
         self.analysis_win = None
         self.analysis_text = None
+        self.analysis_widgets = {}
         self.dashboard_win = None
         self.dashboard_widgets = {}
+        self.analysis_refresh_interval = 0.40
+        self.dashboard_refresh_interval = 0.45
+        self.agent_follow_interval = 2.5
+        self.last_analysis_refresh_at = 0.0
+        self.last_dashboard_refresh_at = 0.0
         self.howto_win = None
         self.music = SidMusicManager(
             root_dir=ROOT_DIR,
@@ -1412,6 +1454,7 @@ class VersusGame:
         self.status = "Insan hamlesini bekliyor"
         self.reason_feed = deque(maxlen=9)
         self.last_proposal_banner = "Henüz öneri yok"
+        self.last_reward_signal = {}
 
         self.root.bind_all("<Left>", self.on_left)
         self.root.bind_all("<Right>", self.on_right)
@@ -1439,6 +1482,7 @@ class VersusGame:
 
         self.push_reason("Robot beyni hazırlandı. İnsan hamlesi bekleniyor.", "system")
         self.apply_sound_mode(push_message=False)
+        self._apply_startup_preferences()
         self.show_how_to_play(force=False)
         self._initialize_turn_flow()
         self.tick()
@@ -1490,14 +1534,30 @@ class VersusGame:
             variable=self.fullscreen_var,
             command=self.toggle_fullscreen,
         )
+        menu_features.add_checkbutton(
+            label="Profil ve Robot Durumu Kutusu",
+            variable=self.show_profile_panel_var,
+            command=self.on_toggle_profile_panel,
+        )
+        menu_features.add_separator()
+        menu_features.add_checkbutton(
+            label="Acilista Gazi Ajan Analizi",
+            variable=self.auto_run_gazi_on_start_var,
+            command=self.on_startup_automation_changed,
+        )
+        menu_features.add_checkbutton(
+            label="Açılışta Desen İzleyici Derin Tarama",
+            variable=self.auto_run_pattern_on_start_var,
+            command=self.on_startup_automation_changed,
+        )
         menu_features.add_command(label="Simdi Log Analizi", command=self.manual_idle_analysis)
         menu_features.add_command(label="Tum Loglari Isle (Uzun Surer)", command=self.manual_full_log_analysis)
         menu_features.add_separator()
         menu_features.add_command(label="Gazi Ajanlari Simdi Calistir", command=self.manual_gazi_agents_run)
         menu_features.add_command(label="Gazi Ajanlari Derin Analiz", command=self.manual_gazi_agents_deep_run)
-        menu_features.add_command(label="PatternWatch Simdi Tara", command=self.manual_pattern_watch_run)
+        menu_features.add_command(label="Desen İzleyici Şimdi Tara", command=self.manual_pattern_watch_run)
         menu_features.add_command(label="Analiz Penceresi (H)", command=self.show_analysis_window)
-        menu_features.add_command(label="Dashboard (J)", command=self.show_dashboard_window)
+        menu_features.add_command(label="Analiz Panosu (J)", command=self.show_dashboard_window)
         menu_features.add_command(label="Yeniden Baslat (R)", command=self.restart_match)
         menu_features.add_separator()
         menu_features.add_command(label="Cikis", command=self.on_quit)
@@ -1513,7 +1573,7 @@ class VersusGame:
     def show_about(self):
         messagebox.showinfo(
             "Hakkinda",
-            "Sayisal Tetris V3\n"
+            "NUMTRIS V3\n"
             "Insan vs Robot AI\n\n"
             "- 10 aktif robot stratejisi\n"
             "- 5 öneri motoru\n"
@@ -1646,6 +1706,7 @@ class VersusGame:
             "applied": "Sadece uygulanan oneriler",
         }.get(choice, "Tum akis")
         self.status = f"Akil yurutme filtresi: {title}"
+        self._save_ui_preferences()
 
     def get_filtered_reason_feed(self):
         mode = self.feed_filter_var.get()
@@ -1676,6 +1737,7 @@ class VersusGame:
         else:
             self.status = "Bekleme modu KAPALI: oyun devam ediyor, eski akisa donuldu"
             self.push_reason(self.status, "system")
+        self._save_ui_preferences()
 
     def on_toggle_wait_mode(self, _event=None):
         self.wait_mode_var.set(not self.wait_mode_var.get())
@@ -1685,6 +1747,49 @@ class VersusGame:
         enabled = bool(self.fullscreen_var.get())
         self.root.attributes("-fullscreen", enabled)
         self.status = f"Tam ekran: {'ACIK' if enabled else 'KAPALI'}"
+        self._save_ui_preferences()
+
+    def on_toggle_profile_panel(self):
+        self._save_ui_preferences()
+        self.status = f"Profil paneli: {'ACIK' if self.show_profile_panel_var.get() else 'KAPALI'}"
+        try:
+            self.draw()
+        except Exception:
+            pass
+
+    def on_startup_automation_changed(self):
+        self._save_ui_preferences()
+
+    def _save_ui_preferences(self):
+        self.profile["ui_game_mode"] = self.game_mode_var.get()
+        self.profile["ui_robot_profile"] = self.robot_profile_var.get()
+        self.profile["ui_wait_mode"] = bool(self.wait_mode_var.get())
+        self.profile["ui_feed_filter"] = self.feed_filter_var.get()
+        self.profile["ui_show_profile_panel"] = bool(self.show_profile_panel_var.get())
+        self.profile["ui_fullscreen"] = bool(self.fullscreen_var.get())
+        self.profile["auto_run_gazi_on_start"] = bool(self.auto_run_gazi_on_start_var.get())
+        self.profile["auto_run_pattern_on_start"] = bool(self.auto_run_pattern_on_start_var.get())
+        save_profile(self.profile)
+
+    def _apply_startup_preferences(self):
+        self._save_ui_preferences()
+        if bool(self.fullscreen_var.get()):
+            self.toggle_fullscreen()
+        if bool(self.auto_run_gazi_on_start_var.get()):
+            result = self.gazi_agents.run_historical_analysis(deep=False)
+            self.push_reason(
+                f"Acilis otomasyonu: Gazi ajan analizi calistirildi ({result.get('files', 0)} dosya, {result.get('rows', 0)} kayit)",
+                "analysis",
+            )
+        if bool(self.auto_run_pattern_on_start_var.get()):
+            result = self.pattern_watch_agent.analyze_all_logs(deep=True)
+            self.pattern_watch_signal = result if isinstance(result, dict) else {}
+            warning_count = len((self.pattern_watch_signal or {}).get("warnings", []))
+            rows = int(((self.pattern_watch_signal or {}).get("summary", {}) or {}).get("rows", 0) or 0)
+            self.push_reason(
+                f"Açılış otomasyonu: Desen İzleyici taraması çalıştırıldı ({rows} kayıt, {warning_count} uyarı)",
+                "analysis",
+            )
 
     def on_toggle_fullscreen(self, _event=None):
         self.fullscreen_var.set(not self.fullscreen_var.get())
@@ -1733,6 +1838,8 @@ class VersusGame:
 
     def manual_gazi_agents_run(self):
         result = self.gazi_agents.run_historical_analysis(deep=False)
+        self.auto_run_gazi_on_start_var.set(True)
+        self._save_ui_preferences()
         self.status = f"Gazi ajan analizi: {result.get('files', 0)} dosya, {result.get('rows', 0)} kayit"
         self.push_reason(self.status, "analysis")
 
@@ -1743,10 +1850,12 @@ class VersusGame:
 
     def manual_pattern_watch_run(self):
         result = self.pattern_watch_agent.analyze_all_logs(deep=True)
+        self.auto_run_pattern_on_start_var.set(True)
+        self._save_ui_preferences()
         self.pattern_watch_signal = result if isinstance(result, dict) else {}
         warning_count = len((self.pattern_watch_signal or {}).get("warnings", []))
         rows = int(((self.pattern_watch_signal or {}).get("summary", {}) or {}).get("rows", 0) or 0)
-        self.status = f"PatternWatch derin tarama: {rows} kayit, {warning_count} uyari"
+        self.status = f"Desen İzleyici derin tarama: {rows} kayıt, {warning_count} uyarı"
         self.push_reason(self.status, "analysis")
 
     def _analysis_text_payload(self):
@@ -1845,58 +1954,301 @@ class VersusGame:
         )
         return "\n".join(lines)
 
-    def _refresh_analysis_window(self):
-        if self.analysis_win is None or not self.analysis_win.winfo_exists() or self.analysis_text is None:
+    def _refresh_analysis_window(self, force=False):
+        if self.analysis_win is None or not self.analysis_win.winfo_exists():
             return
-        self.analysis_text.configure(state="normal")
-        self.analysis_text.delete("1.0", "end")
-        payload = self._analysis_text_payload()
-        self.analysis_text.insert("1.0", payload)
+        widgets = self.analysis_widgets or {}
+        if not widgets:
+            return
+        now = time.time()
+        if (not force) and (now - self.last_analysis_refresh_at) < self.analysis_refresh_interval:
+            return
+        self.last_analysis_refresh_at = now
+        try:
+            rendered_tables = self._build_h_dashboard_tables()
+            for key, text in rendered_tables.items():
+                if key in widgets:
+                    self._safe_set_widget_text(widgets, key, text, striped=True)
+            return
+        except Exception as ex:
+            self._push_dashboard_fallback(widgets, "H pano hata durumu", ex)
+            return
+        try:
+            meta = self._normalize_mapping(self.robot_meta)
+            reward = self._normalize_mapping(self.last_reward_signal)
+            ctx = self._collect_live_analysis_context()
+            enemy = ctx["enemy"]
+            robot = ctx["robot"]
+            fusion = ctx["fusion"]
+            last_directive = ctx["last_directive"]
+            enemy30 = ctx["enemy30"]
+            robot30 = ctx["robot30"]
+            bp_warn = ctx["bp_warn"]
+            bp_base30 = ctx["bp_base30"]
+            bp_live30 = ctx["bp_live30"]
+            pw_warn = ctx["pw_warn"]
+            pw_summary = ctx["pw_summary"]
+            proposal = self._normalize_mapping(meta.get("proposal"))
 
-        self.analysis_text.tag_configure("main_header", foreground="#e2e8f0", background="#1d4ed8", font=("Segoe UI", 13, "bold"), spacing1=10, spacing3=8)
-        self.analysis_text.tag_configure("section_header", foreground="#f8fafc", background="#334155", font=("Segoe UI", 11, "bold"), spacing1=8, spacing3=4)
-        self.analysis_text.tag_configure("table_line", foreground="#cbd5e1", background="#0f172a", font=("Consolas", 10, "normal"))
-        self.analysis_text.tag_configure("normal_line", foreground="#dbeafe", background="#0b1220", font=("Segoe UI", 10, "normal"))
+            active_strategy_key = meta.get("strategy", "N/A")
+            decision_key = meta.get("decision", "N/A")
+            proposal_engine = proposal.get("engine_name", "unknown")
 
-        for idx, line in enumerate(payload.splitlines(), start=1):
-            start = f"{idx}.0"
-            end = f"{idx}.end"
-            if line.startswith("## GAZI ANALIZ PANOSU"):
-                self.analysis_text.tag_add("main_header", start, end)
-            elif line.startswith("## "):
-                self.analysis_text.tag_add("section_header", start, end)
-            elif "|" in line and not line.startswith("Not:"):
-                self.analysis_text.tag_add("table_line", start, end)
+            overview_lines = [
+            f"Mod: {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
+            f"Profil: {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
+            f"Aktif Strateji: {self._strategy_label_ui(active_strategy_key)}",
+            f"Risk Dengesi: Tasma/holes/kolon dengesizligi riskini, puan getirisi ile dengeler",
+            f"Karar: {decision_display_name(decision_key)}",
+            f"Oncelik: {meta.get('priority', 'N/A')}",
+            f"Neden: {meta.get('reason', 'N/A')}",
+            f"Skor Itkisi: {fmt4(meta.get('score_drive', 0.0))}",
+            f"Guvenlik Itkisi: {fmt4(meta.get('safety_drive', 0.0))}",
+            f"Son Oneri: {self.last_proposal_banner}",
+            f"Oneri Motoru: {proposal_engine_display_name(proposal_engine)}",
+            f"Model Guncelleme: {self.robot_ai.total_updates}",
+            f"Son Egitim Hatasi: {fmt4(self.robot_ai.last_train_error)}",
+        ]
+
+            decision_rows = []
+            for source_name, weights in (
+                ("GAZI", self._normalize_mapping(last_directive.get("strategy_weights"))),
+                ("Breakpoint", self._normalize_mapping(ctx["bp_signal"].get("strategy_weights"))),
+                ("PatternWatch", self._normalize_mapping(ctx["pw_signal"].get("strategy_weights"))),
+                ("Birlesik", self._normalize_mapping(ctx["all_strategy_weights"])),
+            ):
+                found = False
+                rows = []
+                for key, val in weights.items():
+                    try:
+                        score = float(val or 0.0)
+                    except Exception:
+                        continue
+                    if score <= 0:
+                        continue
+                    found = True
+                    rows.append((self._strategy_label_ui(key), fmt4(score), source_name))
+                if rows:
+                    rows.sort(key=lambda item: float(item[1]), reverse=True)
+                    decision_rows.extend(rows[:12])
+                elif not found:
+                    decision_rows.append(("Veri yok", "0.000", source_name))
+
+            candidate_rows = []
+            for line in self._candidate_snapshot_lines(limit=8)[1:]:
+                candidate_rows.append(tuple(line.split("\t", 8)))
+
+            feature_names = [
+            "bias",
+            "col_norm",
+            "cur_norm",
+            "next_norm",
+            "col_h",
+            "col_balance",
+            "holes",
+            "fill_ratio",
+            "p9",
+            "plock",
+            "low_height",
+            "low_risk",
+        ]
+            feature_notes = {
+            "bias": "Sabit ofset terimi; modelin taban davranisini ayarlar",
+            "col_norm": "Secilen kolonun normalize indeksi",
+            "cur_norm": "Mevcut sayinin normalize degeri",
+            "next_norm": "Siradaki sayinin normalize degeri",
+            "col_h": "Secilen kolondaki mevcut yukseklik",
+            "col_balance": "Kolonlar arasi denge/sapma olcusu",
+            "holes": "Bosluk riski; yuksek deger daha kirilgan yapi",
+            "fill_ratio": "Tahtanin doluluk orani",
+            "p9": "9 tamamlama potansiyeli",
+            "plock": "Kilitleme/plato riski",
+            "low_height": "Dusuk yukseklikte kalma tercihi",
+            "low_risk": "Genel guvenli hamleye agirlik",
+        }
+            ann_rows = [
+                ("epsilon", fmt4(self.robot_ai.epsilon), "kesif oranı"),
+                ("toplam_update", str(self.robot_ai.total_updates), "egitim dongusu"),
+                ("son_train_error", fmt4(self.robot_ai.last_train_error), "son kayip"),
+                ("nn_score", fmt4(meta.get("nn_score", 0.0)), "sinir agi skoru"),
+                ("strat_score", fmt4(meta.get("strat_score", 0.0)), "kural tabanli skor"),
+                ("final_score", fmt4(meta.get("final_score", 0.0)), "nihai secim skoru"),
+            ]
+            xvals = self._normalize_sequence(meta.get("x"))
+            if xvals:
+                for i, name in enumerate(feature_names):
+                    if i < len(xvals):
+                        ann_rows.append((f"x[{i}] {name}", fmt4(xvals[i]), feature_notes.get(name, "-")))
             else:
-                self.analysis_text.tag_add("normal_line", start, end)
+                ann_rows.append(("x[]", "-", "Bu tur ozellik vektoru yok"))
+            reward_lines = [
+            "Odul / ceza / geri besleme",
+            f"Mod: {GAME_MODE_LABELS.get(reward.get('mode', '-'), reward.get('mode', '-'))}",
+            f"Profil: {ROBOT_PROFILE_LABELS.get(reward.get('profile', '-'), reward.get('profile', '-'))}",
+            f"Robot puan: {fmt4(reward.get('robot_points', 0.0))}",
+            f"Oyuncu puan: {fmt4(reward.get('player_points', 0.0))}",
+            f"Skor farki: {fmt4(reward.get('score_gap', 0.0))}",
+            f"Penalti: {fmt4(reward.get('penalty', 0.0))}",
+            f"Risk cezasi: {fmt4(reward.get('risk_penalty', 0.0))}",
+            f"Kural bonusu: {fmt4(reward.get('rule_bonus', 0.0))}",
+            f"Potansiyel bonusu: {fmt4(reward.get('potential', 0.0))}",
+            f"Guided reward: {fmt4(reward.get('guided_reward', 0.0))}",
+            f"Oneri red orani: %{int(meta.get('proposal_reject_ratio', 0.0) * 100)}",
+            f"Toplam uygulanan oneriler: {meta.get('proposal_applied_total', 0)}",
+            f"Toplam reddedilen oneriler: {meta.get('proposal_rejected_total', 0)}",
+        ]
 
-        self.analysis_text.configure(state="disabled")
+            player_lines = [
+            "Oyuncu ve robot canli analitik",
+            f"Oyuncu adi: {self.player_name}",
+            f"Mac: {int(self.profile.get('total_matches', 0))}",
+            f"Oyuncu W/L: {int(self.profile.get('player_wins', 0))}/{int(self.profile.get('player_losses', 0))}",
+            f"Robot W/L: {int(self.profile.get('robot_wins', 0))}/{int(self.profile.get('robot_losses', 0))}",
+            f"Berabere: {int(self.profile.get('draws', 0))}",
+            "",
+            f"Son30 Oyuncu puan: {fmt4(enemy30.get('avg_points', 0.0))}",
+            f"Son30 Robot puan: {fmt4(robot30.get('avg_points', 0.0))}",
+            f"Son30 Oyuncu patlama: {fmt4(enemy30.get('avg_explosions', 0.0))}",
+            f"Son30 Robot patlama: {fmt4(robot30.get('avg_explosions', 0.0))}",
+            f"Oyuncu ust kolon: {enemy.get('top_cols', [])}",
+            f"Robot ust kolon: {robot.get('top_cols', [])}",
+            f"Oyuncu beceri: {enemy.get('skill_label', 'N/A')} ({fmt4(enemy.get('skill_score', 0.0))})",
+            f"Robot beceri: {robot.get('skill_label', 'N/A')} ({fmt4(robot.get('skill_score', 0.0))})",
+        ]
+
+            breakpoint_lines = [
+            "Breakpoint canli izleme",
+            f"Uyari sayisi: {len(bp_warn)}",
+            f"30 dominant hedef: {(ctx['bp_hist'].get(30, {}) or {}).get('dominant_objective', 'veri_yetersiz') if isinstance(ctx['bp_hist'], dict) else 'veri_yetersiz'}",
+            f"Ozel tas mantik (hist): {fmt4(bp_base30.get('special_logic_score', 0.0))}",
+            f"Ozel tas mantik (live): {fmt4(bp_live30.get('special_logic_score', 0.0))}",
+            f"Sum9 niyet (hist): {fmt4(bp_base30.get('sum9_intent_rate', 0.0))}",
+            f"Sum9 niyet (live): {fmt4(bp_live30.get('sum9_intent_rate', 0.0))}",
+            f"Planlama (hist): {fmt4(bp_base30.get('future_plan_rate', 0.0))}",
+            f"Planlama (live): {fmt4(bp_live30.get('future_plan_rate', 0.0))}",
+            "",
+            "Uyarilar:",
+        ]
+            if bp_warn:
+                for item in bp_warn[:8]:
+                    breakpoint_lines.append(f"- {item}")
+            else:
+                breakpoint_lines.append("- Uyari yok")
+
+            pattern_lines = [
+            "PatternWatch tum log tarama",
+            f"Uyari sayisi: {len(pw_warn)}",
+            f"Toplam satir: {int(pw_summary.get('rows', 0) or 0)}",
+            f"Insan satir: {int(pw_summary.get('human_rows', 0) or 0)}",
+            f"Robot satir: {int(pw_summary.get('robot_rows', 0) or 0)}",
+            f"Insan ort puan: {fmt4(pw_summary.get('human_avg_points', 0.0))}",
+            f"Robot ort puan: {fmt4(pw_summary.get('robot_avg_points', 0.0))}",
+            f"Insan ort patlama: {fmt4(pw_summary.get('human_avg_explosions', 0.0))}",
+            f"Robot ort patlama: {fmt4(pw_summary.get('robot_avg_explosions', 0.0))}",
+            f"Ozel tas verim: {fmt4(pw_summary.get('human_special_efficiency', 0.0))}",
+            f"Sum9 odak: {fmt4(pw_summary.get('human_sum9_focus_rate', 0.0))}",
+            f"Gelecek plan: {fmt4(pw_summary.get('human_future_plan_rate', 0.0))}",
+            f"Kume oran: {fmt4(pw_summary.get('human_cluster_ratio', 0.0))}",
+            f"Ust kolonlar: {pw_summary.get('human_top_cols', [])}",
+            "",
+            "Uyarilar:",
+        ]
+            if pw_warn:
+                for item in pw_warn[:8]:
+                    pattern_lines.append(f"- {item}")
+            else:
+                pattern_lines.append("- Uyari yok")
+
+            gazi_lines = [
+            "Gazi komutlari ve motor agirliklari",
+            f"Stil: {last_directive.get('style', 'N/A')}",
+            f"Hedef kolonlar: {last_directive.get('target_cols', [])}",
+            f"Mantikli oran: {fmt4(last_directive.get('logical_ratio', 0.0))}",
+            f"Ozgur oran: {fmt4(last_directive.get('freedom_ratio', 0.0))}",
+            f"Komut: {last_directive.get('command_text', 'N/A')}",
+            "",
+        ]
+            gazi_lines.extend(self._format_weight_lines("Birlesik Oneri Motoru", ctx["all_proposal_weights"], proposal_engine_display_name, limit=8))
+
+            self._safe_set_widget_text(widgets, "overview", "\n".join(self._tableize_lines("1) Canli Ozet", overview_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "decisions", self._tableize_records("2) Ajan Onerileri", ("STRATEJI", "SKOR", "KAYNAK"), decision_rows), striped=True)
+            self._safe_set_widget_text(widgets, "candidates", self._tableize_records("3) Aday Siralamasi", ("COL", "FINAL", "NN", "STR", "POT", "RISK", "SC", "SAFE", "STRATEJI"), candidate_rows), striped=True)
+            self._safe_set_widget_text(widgets, "ann", self._tableize_records("4) Sinir Agi Geri Besleme", ("ALAN", "DEGER", "ACIKLAMA"), ann_rows), striped=True)
+            self._safe_set_widget_text(widgets, "reward", "\n".join(self._tableize_lines("5) Odul / Ceza", reward_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "player", "\n".join(self._tableize_lines("6) Oyuncu Analitigi", player_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "breakpoint", "\n".join(self._tableize_lines("7) Breakpoint", breakpoint_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "pattern", "\n".join(self._tableize_lines("8) PatternWatch", pattern_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "gazi", "\n".join(self._tableize_lines("9) Gazi", gazi_lines)), striped=True)
+        except Exception as ex:
+            self._push_dashboard_fallback(widgets, "H Dashboard Hata Durumu", ex)
 
     def show_analysis_window(self, _event=None):
         if self.analysis_win is not None and self.analysis_win.winfo_exists():
             self.analysis_win.lift()
-            self._refresh_analysis_window()
+            self._refresh_analysis_window(force=True)
             return
 
         self.analysis_win = tk.Toplevel(self.root)
-        self.analysis_win.title("Robot Analiz Penceresi (H)")
-        self.analysis_win.geometry("980x720")
-        self.analysis_win.minsize(820, 560)
+        self.analysis_win.title("Canlı Yapay Zeka Panosu (H)")
+        self.analysis_win.geometry("1360x900")
+        self.analysis_win.minsize(1000, 680)
+        self.analysis_win.resizable(True, True)
+        self.analysis_widgets = {}
 
-        frm = tk.Frame(self.analysis_win, bg="#0f172a")
-        frm.pack(fill="both", expand=True)
+        style = ttk.Style(self.analysis_win)
+        style.configure("HCard.TLabelframe", background="#0f172a", foreground="#e2e8f0")
+        style.configure("HCard.TLabelframe.Label", background="#0f172a", foreground="#e2e8f0", font=("Segoe UI", 11, "bold"))
 
-        self.analysis_text = tk.Text(
-            frm,
-            wrap="word",
-            bg="#0b1220",
-            fg="#dbeafe",
-            insertbackground="#dbeafe",
-            font=("Segoe UI", 10),
+        _root, grid = self._build_scrollable_dashboard_shell(
+            self.analysis_win,
+            "H CANLI YAPAY ZEKA PANOSU - TÜM AJANLAR / OYUNCU / ÖĞRENME",
+            "#0b6b4a",
         )
-        self.analysis_text.pack(fill="both", expand=True, padx=8, pady=8)
-        self.analysis_text.configure(state="disabled")
-        self._refresh_analysis_window()
+        grid.pack(fill="both", expand=True)
+
+        grid.grid_columnconfigure(0, weight=7)
+        grid.grid_columnconfigure(1, weight=3)
+        grid.grid_columnconfigure(2, weight=11)
+        for r, min_h in ((0, 250), (1, 280), (2, 280)):
+            grid.grid_rowconfigure(r, weight=1, uniform="hcards", minsize=min_h)
+
+        def add_card(row, col, title, key, mono=True, wrap_mode="none", tabs=(210, 380, 1060)):
+            card = ttk.LabelFrame(grid, text=title, style="HCard.TLabelframe")
+            card.grid(row=row, column=col, sticky="nsew", padx=6, pady=6)
+            body = tk.Frame(card, bg="#111827")
+            body.pack(fill="both", expand=True)
+            txt = tk.Text(
+                body,
+                wrap=wrap_mode,
+                bg="#111827",
+                fg="#dbeafe",
+                font=("Consolas", 9) if mono else ("Segoe UI", 10),
+                relief="flat",
+                padx=8,
+                pady=8,
+            )
+            if tabs:
+                txt.configure(tabs=tabs)
+            vbar = tk.Scrollbar(body, orient="vertical", command=txt.yview)
+            hbar = tk.Scrollbar(body, orient="horizontal", command=txt.xview)
+            txt.configure(yscrollcommand=vbar.set, xscrollcommand=hbar.set)
+            txt.pack(side="left", fill="both", expand=True)
+            vbar.pack(side="right", fill="y")
+            hbar.pack(side="bottom", fill="x")
+            self._bind_text_mousewheel(txt, body, card, vbar, hbar)
+            self.analysis_widgets[key] = txt
+
+        add_card(0, 0, "1) Canlı Özet", "overview")
+        add_card(0, 1, "2) Ajan Önerileri", "decisions")
+        add_card(0, 2, "3) Aday Sıralaması", "candidates", mono=True)
+        add_card(1, 0, "4) Sinir Ağı Geri Besleme", "ann", mono=True, wrap_mode="none", tabs=(170, 320, 1180))
+        add_card(1, 1, "5) Ödül / Ceza", "reward")
+        add_card(1, 2, "6) Oyuncu Analitiği", "player")
+        add_card(2, 0, "7) Kırılma İzleyici", "breakpoint")
+        add_card(2, 1, "8) Desen İzleyici", "pattern")
+        add_card(2, 2, "9) Gazi Komutları ve Motorları", "gazi")
+
+        self._refresh_analysis_window(force=True)
 
     def _analysis_value_note(self, metric_name, player_value, robot_value):
         key = str(metric_name or "").lower()
@@ -1942,80 +2294,717 @@ class VersusGame:
             body.append(f"{metric}\t{p}\t{r}\t{comment}")
         return "\n".join(body)
 
-    def _refresh_dashboard_window(self):
-        if self.dashboard_win is None or not self.dashboard_win.winfo_exists():
+    def _set_readonly_text(self, widget, text, striped=False, tab_fix=False):
+        if widget is None:
             return
-        widgets = self.dashboard_widgets
-        if not widgets:
+        if text is None:
+            text = ""
+        if not str(text).strip():
+            text = "ALAN\tDEĞER\tAÇIKLAMA\nVeri\t-\tBu kutu için henüz canlı veri yok"
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text)
+        if striped:
+            lines = text.splitlines()
+            widget.tag_delete("row_even")
+            widget.tag_delete("row_odd")
+            widget.tag_delete("row_header")
+            widget.tag_configure("row_even", background="#15263d", foreground="#e0f2fe")
+            widget.tag_configure("row_odd", background="#223652", foreground="#dbeafe")
+            widget.tag_configure("row_header", background="#0b4d68", foreground="#f8fafc")
+            header_rows = set()
+            for idx, line in enumerate(lines):
+                next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+                if "\t" not in line and next_line.count("\t") >= 1:
+                    header_rows.add(idx)
+                    header_rows.add(idx + 1)
+            stripe_index = 0
+            for idx in range(len(lines)):
+                if not lines[idx].strip():
+                    continue
+                if idx in header_rows:
+                    tag = "row_header"
+                else:
+                    tag = "row_even" if stripe_index % 2 == 0 else "row_odd"
+                    stripe_index += 1
+                widget.tag_add(tag, f"{idx + 1}.0", f"{idx + 1}.end")
+        self._protect_text_widget(widget)
+        widget.configure(foreground="#dbeafe")
+
+    def _safe_set_widget_text(self, widgets, key, text, striped=True):
+        widget = widgets.get(key) if isinstance(widgets, dict) else None
+        if widget is None:
+            return
+        rendered = "" if text is None else str(text)
+        if getattr(widget, "_last_rendered_text", None) == rendered:
+            return
+        try:
+            self._set_readonly_text(widget, rendered, striped=striped)
+            setattr(widget, "_last_rendered_text", rendered)
+        except Exception as ex:
+            fallback = (
+                "ALAN\tDEĞER\tAÇIKLAMA\n"
+                f"Hata\t{key}\t{str(ex)}\n"
+                "Not\t-\tBu kutu güvenli modda dolduruldu"
+            )
+            try:
+                self._set_readonly_text(widget, fallback, striped=True)
+                setattr(widget, "_last_rendered_text", fallback)
+            except Exception:
+                pass
+
+    def _bind_text_mousewheel(self, widget, *targets):
+        if widget is None:
             return
 
-        snap = self.gazi_agents.snapshot()
-        enemy = snap.get("enemy", {})
-        robot = snap.get("robot", {})
-        fusion = snap.get("fusion", {})
-        last_directive = fusion.get("last_directive", {}) or {}
-        enemy30 = enemy.get("last_30", {}) or {}
-        robot30 = robot.get("last_30", {}) or {}
-        bp_snap = self.breakpoint_agent.snapshot() if hasattr(self, "breakpoint_agent") else {}
-        bp_signal = (self.breakpoint_signal or bp_snap.get("last_signal", {}) or {}) if isinstance(bp_snap, dict) else {}
-        bp_hist = bp_snap.get("historical_profiles", {}) if isinstance(bp_snap, dict) else {}
-        bp_warn = bp_signal.get("warnings", []) if isinstance(bp_signal, dict) else []
-        bp_live30 = ((bp_signal.get("signals", {}) or {}).get(30, {}) or {}).get("live", {}) if isinstance(bp_signal, dict) else {}
-        bp_base30 = (bp_hist.get(30, {}) or {}) if isinstance(bp_hist, dict) else {}
-        pw_snap = self.pattern_watch_agent.snapshot() if hasattr(self, "pattern_watch_agent") else {}
-        pw_signal = (self.pattern_watch_signal or pw_snap.get("last_signal", {}) or {}) if isinstance(pw_snap, dict) else {}
-        pw_warn = pw_signal.get("warnings", []) if isinstance(pw_signal, dict) else []
-        pw_summary = pw_signal.get("summary", {}) if isinstance(pw_signal, dict) else {}
+        def _scroll_y(delta):
+            if delta == 0:
+                return
+            step = int(-delta / 120)
+            if step == 0:
+                step = -1 if delta > 0 else 1
+            widget.yview_scroll(step, "units")
 
-        active_strategy_key = self.robot_meta.get("strategy", "N/A") if self.robot_meta else "N/A"
-        active_strategy = strategy_display_name(active_strategy_key)
-        active_info = strategy_info_text(active_strategy_key)
-        decision_text = decision_display_name(self.robot_meta.get("decision", "N/A") if self.robot_meta else "N/A")
-        proposal_engine = proposal_engine_display_name(
-            self.robot_meta["proposal"].get("engine_name", "unknown")
-            if self.robot_meta and self.robot_meta.get("proposal")
-            else ""
+        def _scroll_x(delta):
+            if delta == 0:
+                return
+            step = int(-delta / 120)
+            if step == 0:
+                step = -1 if delta > 0 else 1
+            widget.xview_scroll(step, "units")
+
+        bind_targets = [widget]
+        for target in targets:
+            if target is not None:
+                bind_targets.append(target)
+
+        for target in bind_targets:
+            target.bind("<Enter>", lambda e, w=widget: w.focus_set(), add="+")
+            target.bind("<MouseWheel>", lambda e: (_scroll_y(getattr(e, "delta", 0)), "break")[1], add="+")
+            target.bind("<Shift-MouseWheel>", lambda e: (_scroll_x(getattr(e, "delta", 0)), "break")[1], add="+")
+            target.bind("<Button-4>", lambda e: (widget.yview_scroll(-1, "units"), "break")[1], add="+")
+            target.bind("<Button-5>", lambda e: (widget.yview_scroll(1, "units"), "break")[1], add="+")
+
+    def _normalize_mapping(self, value):
+        return value if isinstance(value, dict) else {}
+
+    def _normalize_sequence(self, value):
+        return value if isinstance(value, (list, tuple)) else []
+
+    def _dashboard_error_text(self, title, ex):
+        return "\n".join(
+            [
+                title,
+                "ALAN\tDEĞER\tAÇIKLAMA",
+                f"Hata\t{type(ex).__name__}\t{str(ex)}",
+                "Not\t-\tPano güvenli mod ile açıldı; veri parçalı olabilir",
+            ]
         )
 
-        card1_lines = [
-            f"Oyun Modu : {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
-            f"Robot Profili : {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
-            f"Aktif Strateji : {active_strategy}",
-            f"Karar : {decision_text}",
-            f"Oncelik : {self.robot_meta.get('priority', 'N/A') if self.robot_meta else 'N/A'}",
-            f"Acilklama : {active_info}",
-            "",
-            "Yorum:",
-            "- Guvenli Yigma = ust satira tasma riskini azaltmak icin yuksek kolonlari dengelemek.",
-            "- Bu strateji, tek hamlelik buyuk puan yerine oyunu uzun sure kontrol etmeyi hedefler.",
+    def _dashboard_fallback_map(self, title, ex):
+        text = self._dashboard_error_text(title, ex)
+        return {
+            "overview": text,
+            "decisions": text,
+            "candidates": text,
+            "ann": text,
+            "reward": text,
+            "player": text,
+            "breakpoint": text,
+            "pattern": text,
+            "gazi": text,
+            "card_decision": text,
+            "card_proposal": text,
+            "card_projection": text,
+            "table_metrics": text,
+            "table_strategy": text,
+            "card_advanced": text,
+        }
+
+    def _push_dashboard_fallback(self, widgets, title, ex):
+        if not isinstance(widgets, dict):
+            return
+        fallback_map = self._dashboard_fallback_map(title, ex)
+        for key in widgets.keys():
+            self._safe_set_widget_text(widgets, key, fallback_map.get(key, fallback_map["overview"]), striped=True)
+
+    def _build_scrollable_dashboard_shell(self, window, header_text, header_bg):
+        root = tk.Frame(window, bg="#0b1220")
+        root.pack(fill="both", expand=True, padx=10, pady=10)
+
+        hdr = tk.Label(
+            root,
+            text=header_text,
+            bg=header_bg,
+            fg="#f8fafc",
+            font=("Segoe UI", 14, "bold"),
+            pady=6,
+        )
+        hdr.pack(fill="x", pady=(0, 8))
+
+        shell = tk.Frame(root, bg="#0b1220")
+        shell.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(shell, bg="#0b1220", highlightthickness=0)
+        vbar = tk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vbar.pack(side="right", fill="y")
+
+        content = tk.Frame(canvas, bg="#0b1220")
+        content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _sync_width(event):
+            canvas.itemconfigure(content_id, width=event.width)
+
+        def _sync_region(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", _sync_width, add="+")
+        content.bind("<Configure>", _sync_region, add="+")
+
+        def _wheel(event):
+            delta = getattr(event, "delta", 0)
+            if delta == 0:
+                return
+            step = int(-delta / 120)
+            if step == 0:
+                step = -1 if delta > 0 else 1
+            canvas.yview_scroll(step, "units")
+            return "break"
+
+        canvas.bind("<MouseWheel>", _wheel, add="+")
+        canvas.bind("<Button-4>", lambda e: (canvas.yview_scroll(-1, "units"), "break")[1], add="+")
+        canvas.bind("<Button-5>", lambda e: (canvas.yview_scroll(1, "units"), "break")[1], add="+")
+        content.bind("<MouseWheel>", _wheel, add="+")
+        content.bind("<Button-4>", lambda e: (canvas.yview_scroll(-1, "units"), "break")[1], add="+")
+        content.bind("<Button-5>", lambda e: (canvas.yview_scroll(1, "units"), "break")[1], add="+")
+        return root, content
+
+    def _strategy_label_ui(self, strategy_name):
+        key = str(strategy_name or "").strip()
+        label = strategy_display_name(key)
+        if not key.startswith("gen_"):
+            return label
+
+        hint = ""
+        if isinstance(self.robot_meta, dict):
+            proposal = self.robot_meta.get("proposal", {})
+            if isinstance(proposal, dict):
+                hint = proposal_engine_display_name(proposal.get("engine_name", ""))
+            if not hint or hint == "Bilinmeyen Öneri Motoru":
+                hint = str(self.robot_meta.get("profile_style", "") or "").strip()
+        if hint:
+            return f"{label} [{hint}]"
+        return label
+
+    def _strategy_description_ui(self, strategy_name, proposal=None, meta=None):
+        key = str(strategy_name or "").strip()
+        meta_map = self._normalize_mapping(meta if meta is not None else self.robot_meta)
+        proposal_map = self._normalize_mapping(proposal if proposal is not None else meta_map.get("proposal"))
+        engine_name = str(proposal_map.get("engine_name", "") or "").strip()
+        profile_style = str(meta_map.get("profile_style", "") or "").strip()
+        if key in STRATEGY_INFO_TR:
+            return STRATEGY_INFO_TR[key]
+        if key.startswith("gen_"):
+            if engine_name == "risk_balancer":
+                return "Skoru artırırken taşma, boşluk ve kolon dengesizliği riskini dengede tutar."
+            if engine_name == "stability_guard":
+                return "Tahta istikrarını koruyup üst satıra taşma baskısını azaltmaya çalışır."
+            if engine_name == "combo_amplifier":
+                return "Zincir patlama olasılığını büyütmek için kontrollü risk alır."
+            if engine_name == "mutate_aggressive":
+                return "Daha hızlı üstünlük için daha sert ve daha riskli varyasyonları dener."
+            if engine_name == "mutate_light":
+                return "Mevcut stratejiyi bozmadan küçük iyileştirmeler arayan nazik bir varyasyondur."
+            if profile_style:
+                return profile_style
+            return proposal_engine_info_text(engine_name)
+        return strategy_info_text(key)
+
+    def _strategy_risk_balance_ui(self, strategy_name, proposal=None, meta=None):
+        key = str(strategy_name or "").strip()
+        meta_map = self._normalize_mapping(meta if meta is not None else self.robot_meta)
+        proposal_map = self._normalize_mapping(proposal if proposal is not None else meta_map.get("proposal"))
+        engine_name = str(proposal_map.get("engine_name", "") or "").strip()
+        if key.startswith("gen_"):
+            if engine_name == "risk_balancer":
+                return "Taşma, boşluk ve kolon dengesizliği riskini puan getirisiyle dengeler."
+            if engine_name == "stability_guard":
+                return "Üst satıra yaklaşma ve kırılgan kolon yükselmesi riskini azaltır."
+            if engine_name == "combo_amplifier":
+                return "Patlama zinciri getirisini öne çekerken kısa vadeli yapı riskini artırabilir."
+            if engine_name == "mutate_aggressive":
+                return "Daha yüksek puan ihtimali için daha yüksek yapı riskini kabul edebilir."
+            if engine_name == "mutate_light":
+                return "Mevcut güvenli akışı korurken küçük verim artışı arar."
+        return "Seçilen stratejinin risk ve getiri dengesi bu satırda özetlenir."
+
+    def _list_text(self, value):
+        seq = self._normalize_sequence(value)
+        if not seq:
+            return "-"
+        return ", ".join(str(item) for item in seq)
+
+    def _table_blocks_text(self, *blocks):
+        clean = [str(block).strip() for block in blocks if str(block or "").strip()]
+        return "\n\n".join(clean)
+
+    def _protect_text_widget(self, widget):
+        if widget is None or getattr(widget, "_dashboard_readonly_bound", False):
+            return
+
+        def _block(_event=None):
+            return "break"
+
+        for seq in (
+            "<Key>",
+            "<<Cut>>",
+            "<<Paste>>",
+            "<<Clear>>",
+            "<Control-v>",
+            "<Control-V>",
+            "<Control-x>",
+            "<Control-X>",
+            "<BackSpace>",
+            "<Delete>",
+            "<Return>",
+            "<Tab>",
+        ):
+            widget.bind(seq, _block, add="+")
+        widget.configure(insertwidth=0, cursor="arrow", undo=False, autoseparators=False, maxundo=0)
+        setattr(widget, "_dashboard_readonly_bound", True)
+
+    def _tableize_lines(self, title, lines):
+        out = [title, "ALAN\tDEĞER\tAÇIKLAMA"]
+        for raw in lines:
+            s = str(raw or "").strip()
+            if not s:
+                continue
+            if s.startswith("- "):
+                out.append(f"Not\t-\t{s[2:].strip()}")
+                continue
+            if s.endswith(":") and ":" not in s[:-1]:
+                out.append(f"Bölüm\t{s[:-1].strip()}\t-")
+                continue
+            if ":" in s:
+                k, v = s.split(":", 1)
+                out.append(f"{k.strip()}\t{v.strip()}\t-")
+            else:
+                out.append(f"Bilgi\t{s}\t-")
+        return out
+
+    def _tableize_records(self, title, header, rows):
+        body = [title, "\t".join(header)]
+        for row in rows:
+            cells = []
+            for item in row:
+                text = str(item if item is not None else "-").replace("\n", " / ").strip()
+                cells.append(text if text else "-")
+            body.append("\t".join(cells))
+        if len(body) == 2:
+            body.append("\t".join(["Veri yok"] + ["-"] * (len(header) - 1)))
+        return "\n".join(body)
+
+    def _collect_live_analysis_context(self):
+        snap = self._normalize_mapping(self.gazi_agents.snapshot() if hasattr(self, "gazi_agents") else {})
+        enemy = self._normalize_mapping(snap.get("enemy"))
+        robot = self._normalize_mapping(snap.get("robot"))
+        fusion = self._normalize_mapping(snap.get("fusion"))
+        last_directive = self._normalize_mapping(fusion.get("last_directive"))
+        enemy30 = self._normalize_mapping(enemy.get("last_30"))
+        robot30 = self._normalize_mapping(robot.get("last_30"))
+
+        bp_snap = self._normalize_mapping(self.breakpoint_agent.snapshot() if hasattr(self, "breakpoint_agent") else {})
+        bp_signal = self._normalize_mapping(self.breakpoint_signal or bp_snap.get("last_signal"))
+        bp_hist = self._normalize_mapping(bp_snap.get("historical_profiles"))
+        bp_warn = self._normalize_sequence(bp_signal.get("warnings"))
+        bp_signals = self._normalize_mapping(bp_signal.get("signals"))
+        bp_live30 = self._normalize_mapping(self._normalize_mapping(bp_signals.get(30)).get("live"))
+        bp_base30 = self._normalize_mapping(bp_hist.get(30))
+
+        pw_snap = self._normalize_mapping(self.pattern_watch_agent.snapshot() if hasattr(self, "pattern_watch_agent") else {})
+        pw_signal = self._normalize_mapping(self.pattern_watch_signal or pw_snap.get("last_signal"))
+        pw_warn = self._normalize_sequence(pw_signal.get("warnings"))
+        pw_summary = self._normalize_mapping(pw_signal.get("summary"))
+
+        all_sw = {}
+        for source in (
+            last_directive.get("strategy_weights", {}) or {},
+            bp_signal.get("strategy_weights", {}) or {},
+            pw_signal.get("strategy_weights", {}) or {},
+        ):
+            for key, val in source.items():
+                try:
+                    all_sw[key] = float(all_sw.get(key, 0.0) or 0.0) + float(val or 0.0)
+                except Exception:
+                    continue
+
+        all_pw = {}
+        for source in (
+            last_directive.get("proposal_weights", {}) or {},
+            bp_signal.get("proposal_weights", {}) or {},
+            pw_signal.get("proposal_weights", {}) or {},
+        ):
+            for key, val in source.items():
+                try:
+                    all_pw[key] = float(all_pw.get(key, 0.0) or 0.0) + float(val or 0.0)
+                except Exception:
+                    continue
+
+        return {
+            "enemy": enemy,
+            "robot": robot,
+            "fusion": fusion,
+            "last_directive": last_directive,
+            "enemy30": enemy30,
+            "robot30": robot30,
+            "bp_signal": bp_signal,
+            "bp_hist": bp_hist,
+            "bp_warn": bp_warn,
+            "bp_live30": bp_live30,
+            "bp_base30": bp_base30,
+            "pw_signal": pw_signal,
+            "pw_warn": pw_warn,
+            "pw_summary": pw_summary,
+            "all_strategy_weights": all_sw,
+            "all_proposal_weights": all_pw,
+        }
+
+    def _format_weight_lines(self, title, weights, name_resolver, limit=10):
+        rows = []
+        for key, val in (weights or {}).items():
+            try:
+                rows.append((key, float(val or 0.0)))
+            except Exception:
+                continue
+        rows = [x for x in rows if x[1] > 0]
+        rows.sort(key=lambda x: x[1], reverse=True)
+        lines = [title, "ALAN\tSKOR\tACIKLAMA"]
+        for key, val in rows[:limit]:
+            lines.append(f"{name_resolver(key)}\t{fmt4(val)}\t-")
+        if len(lines) == 2:
+            lines.append("Veri yok\t0.000\tHenuz agirlik uretilmedi")
+        return lines
+
+    def _format_weight_records(self, weights, name_resolver, note_resolver=None, limit=10):
+        rows = []
+        for key, val in (weights or {}).items():
+            try:
+                score = float(val or 0.0)
+            except Exception:
+                continue
+            if score <= 0:
+                continue
+            note = "-"
+            if callable(note_resolver):
+                try:
+                    note = note_resolver(key)
+                except Exception:
+                    note = "-"
+            rows.append((name_resolver(key), fmt4(score), note))
+        rows.sort(key=lambda item: float(item[1]), reverse=True)
+        if not rows:
+            rows.append(("Veri yok", "0.000", "Henüz ağırlık üretilmedi"))
+        return rows[:limit]
+
+    def _candidate_snapshot_lines(self, limit=6):
+        snap = self._normalize_sequence(self._normalize_mapping(self.robot_meta).get("candidate_snapshot"))
+        if not isinstance(snap, list) or not snap:
+            return ["COL\tFINAL\tNN\tSTR\tPOT\tRISK\tSC\tSAFE\tSTRATEJI", "-\t0.000\t0.000\t0.000\t0.000\t0.000\t0.000\t0.000\tAday tablosu henuz olusmadi"]
+        lines = ["COL\tFINAL\tNN\tSTR\tPOT\tRISK\tSC\tSAFE\tSTRATEJI"]
+        for row in snap[:limit]:
+            row = self._normalize_mapping(row)
+            lines.append(
+                f"{row.get('col', '-')}\t{fmt4(row.get('final_score', 0.0))}\t{fmt4(row.get('nn_score', 0.0))}\t"
+                f"{fmt4(row.get('strat_score', 0.0))}\t{fmt4(row.get('potential', 0.0))}\t{fmt4(row.get('risk', 0.0))}\t"
+                f"{fmt4(row.get('score_drive', 0.0))}\t{fmt4(row.get('safety_drive', 0.0))}\t{self._strategy_label_ui(row.get('strategy', 'N/A'))}"
+            )
+        return lines
+
+    def _candidate_snapshot_rows(self, limit=6):
+        snap = self._normalize_sequence(self._normalize_mapping(self.robot_meta).get("candidate_snapshot"))
+        if not isinstance(snap, list) or not snap:
+            return [("-", "0.000", "0.000", "0.000", "0.000", "0.000", "0.000", "0.000", "Aday tablosu henüz oluşmadı")]
+        rows = []
+        for row in snap[:limit]:
+            row = self._normalize_mapping(row)
+            rows.append(
+                (
+                    row.get("col", "-"),
+                    fmt4(row.get("final_score", 0.0)),
+                    fmt4(row.get("nn_score", 0.0)),
+                    fmt4(row.get("strat_score", 0.0)),
+                    fmt4(row.get("potential", 0.0)),
+                    fmt4(row.get("risk", 0.0)),
+                    fmt4(row.get("score_drive", 0.0)),
+                    fmt4(row.get("safety_drive", 0.0)),
+                    self._strategy_label_ui(row.get("strategy", "N/A")),
+                )
+            )
+        return rows
+
+    def _build_h_dashboard_tables(self):
+        meta = self._normalize_mapping(self.robot_meta)
+        reward = self._normalize_mapping(self.last_reward_signal)
+        ctx = self._collect_live_analysis_context()
+        enemy = ctx["enemy"]
+        robot = ctx["robot"]
+        last_directive = ctx["last_directive"]
+        enemy30 = ctx["enemy30"]
+        robot30 = ctx["robot30"]
+        bp_warn = ctx["bp_warn"]
+        bp_base30 = ctx["bp_base30"]
+        bp_live30 = ctx["bp_live30"]
+        pw_warn = ctx["pw_warn"]
+        pw_summary = ctx["pw_summary"]
+        proposal = self._normalize_mapping(meta.get("proposal"))
+
+        active_strategy_key = meta.get("strategy", "N/A")
+        decision_key = meta.get("decision", "N/A")
+        proposal_engine_key = proposal.get("engine_name", "")
+        active_strategy_label = self._strategy_label_ui(active_strategy_key)
+
+        overview_rows = [
+            ("Oyun modu", GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get()), "Seçili oyun akışı"),
+            ("Robot profili", ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get()), "Robotun karar verme eğilimi"),
+            ("Aktif strateji", active_strategy_label, "Bu tur öne çıkan strateji"),
+            ("Strateji açıklaması", self._strategy_description_ui(active_strategy_key, proposal, meta), "Aktif stratejinin temel amacı"),
+            ("Risk dengesi", self._strategy_risk_balance_ui(active_strategy_key, proposal, meta), "Hangi riski neyle dengelediği"),
+            ("Karar", decision_display_name(decision_key), "Hamlenin seçilme biçimi"),
+            ("Öncelik", meta.get("priority", "Yok"), "Karar zincirinde baskın olan etken"),
+            ("Neden", meta.get("reason", "Yok"), "Karar motorunun kısa gerekçesi"),
+            ("Skor itkisi", fmt4(meta.get("score_drive", 0.0)), "Skor avantajı baskısı"),
+            ("Güvenlik itkisi", fmt4(meta.get("safety_drive", 0.0)), "Tahtayı emniyette tutma baskısı"),
+            ("Son öneri", self.last_proposal_banner or "Henüz yok", "En son görülen öneri"),
+            ("Öneri motoru", proposal_engine_display_name(proposal_engine_key), proposal_engine_info_text(proposal_engine_key)),
+            ("Model güncelleme", str(self.robot_ai.total_updates), "Toplam öğrenme güncellemesi"),
+            ("Son eğitim hatası", fmt4(self.robot_ai.last_train_error), "Son öğrenme kaybı"),
         ]
 
-        card2_lines = [
-            f"Son Oneri : {self.last_proposal_banner}",
-            f"Oneri Motoru : {proposal_engine}",
-            f"Motor Aciklamasi : {proposal_engine_info_text(self.robot_meta['proposal'].get('engine_name', 'unknown') if self.robot_meta and self.robot_meta.get('proposal') else '')}",
-            f"Red Sansi : %{int((self.robot_meta.get('gazi_reject_chance', 0.0) if self.robot_meta else 0.0) * 100)}",
-            f"Red Ust Siniri : %{int((self.robot_meta.get('gazi_reject_cap_ratio', 0.30) if self.robot_meta else 0.30) * 100)}",
-            f"Gerceklesen Red Orani : %{int((self.robot_meta.get('proposal_reject_ratio', 0.0) if self.robot_meta else 0.0) * 100)}",
-            "",
-            f"Gazi Stil : {last_directive.get('style', 'N/A')}",
-            f"Hedef Kolonlar : {last_directive.get('target_cols', [])}",
-            f"Kirilma Ajan Amaci (30): {(bp_hist.get(30, {}) or {}).get('dominant_objective', 'veri_yetersiz') if isinstance(bp_hist, dict) else 'veri_yetersiz'}",
-            f"Canli Uyari Sayisi : {len(bp_warn)}",
-            f"PatternWatch Uyari Sayisi : {len(pw_warn)}",
-            f"PatternWatch Sum9 Odak : {fmt4(pw_summary.get('human_sum9_focus_rate', 0.0))}",
-            f"PatternWatch Gelecek Plan : {fmt4(pw_summary.get('human_future_plan_rate', 0.0))}",
+        decision_rows = []
+        for source_name, weights in (
+            ("Gazi", self._normalize_mapping(last_directive.get("strategy_weights"))),
+            ("Kırılma İzleyici", self._normalize_mapping(ctx["bp_signal"].get("strategy_weights"))),
+            ("Desen İzleyici", self._normalize_mapping(ctx["pw_signal"].get("strategy_weights"))),
+            ("Birleşik", self._normalize_mapping(ctx["all_strategy_weights"])),
+        ):
+            local_rows = []
+            for key, val in weights.items():
+                try:
+                    score = float(val or 0.0)
+                except Exception:
+                    continue
+                if score <= 0:
+                    continue
+                local_rows.append((self._strategy_label_ui(key), fmt4(score), source_name))
+            if local_rows:
+                local_rows.sort(key=lambda item: float(item[1]), reverse=True)
+                decision_rows.extend(local_rows[:12])
+            else:
+                decision_rows.append(("Veri yok", "0.000", source_name))
+
+        feature_names = [
+            "bias",
+            "col_norm",
+            "cur_norm",
+            "next_norm",
+            "col_h",
+            "col_balance",
+            "holes",
+            "fill_ratio",
+            "p9",
+            "plock",
+            "low_height",
+            "low_risk",
+        ]
+        feature_notes = {
+            "bias": "Sabit ofset terimi; modelin taban davranışını ayarlar",
+            "col_norm": "Seçilen kolonun normalize indeksi",
+            "cur_norm": "Mevcut sayının normalize değeri",
+            "next_norm": "Sıradaki sayının normalize değeri",
+            "col_h": "Seçilen kolondaki mevcut yükseklik",
+            "col_balance": "Kolonlar arası denge ve sapma ölçüsü",
+            "holes": "Boşluk riski; yüksek değer daha kırılgan yapı demektir",
+            "fill_ratio": "Tahtanın doluluk oranı",
+            "p9": "Toplam 9 tamamlama potansiyeli",
+            "plock": "Kilitlenme ve plato riski",
+            "low_height": "Düşük yükseklikte kalma tercihi",
+            "low_risk": "Genel güvenli hamle eğilimi",
+        }
+        ann_rows = [
+            ("epsilon", fmt4(self.robot_ai.epsilon), "Keşif oranı"),
+            ("toplam_güncelleme", str(self.robot_ai.total_updates), "Eğitim döngüsü"),
+            ("son_eğitim_hatası", fmt4(self.robot_ai.last_train_error), "Son kayıp değeri"),
+            ("sinir_agi_skoru", fmt4(meta.get("nn_score", 0.0)), "Sinir ağı değerlendirmesi"),
+            ("kural_skoru", fmt4(meta.get("strat_score", 0.0)), "Kural tabanlı değerlendirme"),
+            ("nihai_skor", fmt4(meta.get("final_score", 0.0)), "Kararı belirleyen son skor"),
+        ]
+        xvals = self._normalize_sequence(meta.get("x"))
+        if xvals:
+            for i, name in enumerate(feature_names):
+                if i < len(xvals):
+                    ann_rows.append((f"x[{i}] {name}", fmt4(xvals[i]), feature_notes.get(name, "-")))
+        else:
+            ann_rows.append(("x[]", "-", "Bu tur özellik vektörü oluşmadı"))
+
+        reward_rows = [
+            ("Mod", GAME_MODE_LABELS.get(reward.get("mode", "-"), reward.get("mode", "-")), "Ödül sinyalinin ait olduğu oyun modu"),
+            ("Profil", ROBOT_PROFILE_LABELS.get(reward.get("profile", "-"), reward.get("profile", "-")), "Ödül sinyalinin ait olduğu profil"),
+            ("Robot puanı", fmt4(reward.get("robot_points", 0.0)), "Bu tur robotun kazandığı puan"),
+            ("Oyuncu puanı", fmt4(reward.get("player_points", 0.0)), "Bu tur oyuncunun kazandığı puan"),
+            ("Skor farkı", fmt4(reward.get("score_gap", 0.0)), "Robot eksi oyuncu puanı"),
+            ("Ceza", fmt4(reward.get("penalty", 0.0)), "Puan geriliğinden gelen ceza"),
+            ("Risk cezası", fmt4(reward.get("risk_penalty", 0.0)), "Yüksek riskli hamle cezası"),
+            ("Kural bonusu", fmt4(reward.get("rule_bonus", 0.0)), "Özel kural tetik bonusu"),
+            ("Potansiyel bonusu", fmt4(reward.get("potential", 0.0)), "Hamle öncesi potansiyel ödülü"),
+            ("Yönlendirilmiş ödül", fmt4(reward.get("guided_reward", 0.0)), "Öğrenmeye aktarılan toplam ödül"),
+            ("Öneri red oranı", f"%{int(meta.get('proposal_reject_ratio', 0.0) * 100)}", "Üretilen önerilerin reddedilme oranı"),
+            ("Uygulanan öneri", str(meta.get("proposal_applied_total", 0)), "Toplam kabul edilen öneri sayısı"),
+            ("Reddedilen öneri", str(meta.get("proposal_rejected_total", 0)), "Toplam reddedilen öneri sayısı"),
+        ]
+
+        player_rows = [
+            ("Oyuncu adı", self.player_name, "Aktif insan oyuncu"),
+            ("Toplam maç", str(int(self.profile.get("total_matches", 0))), "Kayıtlı maç sayısı"),
+            ("Oyuncu W/L", f"{int(self.profile.get('player_wins', 0))}/{int(self.profile.get('player_losses', 0))}", "Oyuncu galibiyet / mağlubiyet"),
+            ("Robot W/L", f"{int(self.profile.get('robot_wins', 0))}/{int(self.profile.get('robot_losses', 0))}", "Robot galibiyet / mağlubiyet"),
+            ("Berabere", str(int(self.profile.get("draws", 0))), "Berabere biten maç sayısı"),
+            ("Son 30 oyuncu puanı", fmt4(enemy30.get("avg_points", 0.0)), "Son 30 tur ortalaması"),
+            ("Son 30 robot puanı", fmt4(robot30.get("avg_points", 0.0)), "Son 30 tur ortalaması"),
+            ("Son 30 oyuncu patlama", fmt4(enemy30.get("avg_explosions", 0.0)), "Son 30 tur patlama ortalaması"),
+            ("Son 30 robot patlama", fmt4(robot30.get("avg_explosions", 0.0)), "Son 30 tur patlama ortalaması"),
+            ("Oyuncu üst kolonları", self._list_text(enemy.get("top_cols", [])), "Oyuncuda baskın yükselen kolonlar"),
+            ("Robot üst kolonları", self._list_text(robot.get("top_cols", [])), "Robotta baskın yükselen kolonlar"),
+            ("Oyuncu becerisi", f"{enemy.get('skill_label', 'Yok')} ({fmt4(enemy.get('skill_score', 0.0))})", "Oyuncu beceri özeti"),
+            ("Robot becerisi", f"{robot.get('skill_label', 'Yok')} ({fmt4(robot.get('skill_score', 0.0))})", "Robot beceri özeti"),
+        ]
+
+        breakpoint_rows = [
+            ("Uyarı sayısı", str(len(bp_warn)), "Canlı kırılma izleyici uyarı adedi"),
+            ("30 tur baskın hedef", (ctx["bp_hist"].get(30, {}) or {}).get("dominant_objective", "veri_yetersiz") if isinstance(ctx["bp_hist"], dict) else "veri_yetersiz", "Son 30 turda baskın amaç"),
+            ("Özel taş mantığı (geçmiş)", fmt4(bp_base30.get("special_logic_score", 0.0)), "Tarihsel özel taş verimi"),
+            ("Özel taş mantığı (canlı)", fmt4(bp_live30.get("special_logic_score", 0.0)), "Canlı özel taş verimi"),
+            ("Toplam 9 niyeti (geçmiş)", fmt4(bp_base30.get("sum9_intent_rate", 0.0)), "Tarihsel toplam 9 odak oranı"),
+            ("Toplam 9 niyeti (canlı)", fmt4(bp_live30.get("sum9_intent_rate", 0.0)), "Canlı toplam 9 odak oranı"),
+            ("Planlama (geçmiş)", fmt4(bp_base30.get("future_plan_rate", 0.0)), "Tarihsel gelecek taş planı"),
+            ("Planlama (canlı)", fmt4(bp_live30.get("future_plan_rate", 0.0)), "Canlı gelecek taş planı"),
         ]
         if bp_warn:
-            card2_lines.append("")
-            card2_lines.append("Kirilma Ajan Uyarilari:")
-            for item in bp_warn[:3]:
-                card2_lines.append(f"- {item}")
+            for idx, item in enumerate(bp_warn[:8], start=1):
+                breakpoint_rows.append((f"Uyarı {idx}", item, "Kırılma izleyici uyarısı"))
+        else:
+            breakpoint_rows.append(("Uyarı", "Yok", "Şu anda kritik kırılma uyarısı yok"))
+
+        pattern_rows = [
+            ("Uyarı sayısı", str(len(pw_warn)), "Desen izleyici uyarı adedi"),
+            ("Toplam satır", str(int(pw_summary.get("rows", 0) or 0)), "Taranan günlük satırı"),
+            ("İnsan satırı", str(int(pw_summary.get("human_rows", 0) or 0)), "İnsana ait satırlar"),
+            ("Robot satırı", str(int(pw_summary.get("robot_rows", 0) or 0)), "Robota ait satırlar"),
+            ("İnsan ortalama puan", fmt4(pw_summary.get("human_avg_points", 0.0)), "Günlük genel ortalaması"),
+            ("Robot ortalama puan", fmt4(pw_summary.get("robot_avg_points", 0.0)), "Günlük genel ortalaması"),
+            ("İnsan ortalama patlama", fmt4(pw_summary.get("human_avg_explosions", 0.0)), "Günlük genel ortalaması"),
+            ("Robot ortalama patlama", fmt4(pw_summary.get("robot_avg_explosions", 0.0)), "Günlük genel ortalaması"),
+            ("Özel taş verimi", fmt4(pw_summary.get("human_special_efficiency", 0.0)), "İnsanın özel taş kullanım verimi"),
+            ("Toplam 9 odağı", fmt4(pw_summary.get("human_sum9_focus_rate", 0.0)), "İnsanın toplam 9 odak oranı"),
+            ("Gelecek planı", fmt4(pw_summary.get("human_future_plan_rate", 0.0)), "İnsanın kurulum planı oranı"),
+            ("Küme oranı", fmt4(pw_summary.get("human_cluster_ratio", 0.0)), "Sayı kümelenme eğilimi"),
+            ("Üst kolonlar", self._list_text(pw_summary.get("human_top_cols", [])), "En sık yükselen kolonlar"),
+        ]
         if pw_warn:
-            card2_lines.append("")
-            card2_lines.append("PatternWatch Uyarilari:")
-            for item in pw_warn[:3]:
-                card2_lines.append(f"- {item}")
+            for idx, item in enumerate(pw_warn[:8], start=1):
+                pattern_rows.append((f"Uyarı {idx}", item, "Desen izleyici uyarısı"))
+        else:
+            pattern_rows.append(("Uyarı", "Yok", "Şu anda kritik desen uyarısı yok"))
+
+        gazi_rows = [
+            ("Stil", last_directive.get("style", "Yok"), "Bu tur baskın yönlendirme stili"),
+            ("Hedef kolonlar", self._list_text(last_directive.get("target_cols", [])), "Önerilen hedef kolonlar"),
+            ("Mantıklı oran", fmt4(last_directive.get("logical_ratio", 0.0)), "Kural baskısının ağırlığı"),
+            ("Özgür oran", fmt4(last_directive.get("freedom_ratio", 0.0)), "Serbest seçimin ağırlığı"),
+            ("Komut", last_directive.get("command_text", "Yok"), "Bu tur verilen kısa yönlendirme"),
+        ]
+        gazi_motor_rows = self._format_weight_records(
+            ctx["all_proposal_weights"],
+            proposal_engine_display_name,
+            proposal_engine_info_text,
+            limit=8,
+        )
+
+        return {
+            "overview": self._tableize_records("1) Canlı Özet", ("ALAN", "DEĞER", "AÇIKLAMA"), overview_rows),
+            "decisions": self._tableize_records("2) Ajan Önerileri", ("STRATEJİ", "SKOR", "KAYNAK"), decision_rows),
+            "candidates": self._tableize_records(
+                "3) Aday Sıralaması",
+                ("SÜTUN", "NİHAİ", "SİNİR AĞI", "KURAL", "POTANSİYEL", "RİSK", "SKOR İTKİSİ", "GÜVENLİK", "STRATEJİ"),
+                self._candidate_snapshot_rows(limit=8),
+            ),
+            "ann": self._tableize_records("4) Sinir Ağı Geri Besleme", ("ALAN", "DEĞER", "AÇIKLAMA"), ann_rows),
+            "reward": self._tableize_records("5) Ödül / Ceza", ("ALAN", "DEĞER", "AÇIKLAMA"), reward_rows),
+            "player": self._tableize_records("6) Oyuncu Analitiği", ("ALAN", "DEĞER", "AÇIKLAMA"), player_rows),
+            "breakpoint": self._tableize_records("7) Kırılma İzleyici", ("ALAN", "DEĞER", "AÇIKLAMA"), breakpoint_rows),
+            "pattern": self._tableize_records("8) Desen İzleyici", ("ALAN", "DEĞER", "AÇIKLAMA"), pattern_rows),
+            "gazi": self._table_blocks_text(
+                self._tableize_records("9) Gazi Komutları", ("ALAN", "DEĞER", "AÇIKLAMA"), gazi_rows),
+                self._tableize_records("Öneri Motoru Ağırlıkları", ("MOTOR", "SKOR", "AÇIKLAMA"), gazi_motor_rows),
+            ),
+        }
+
+    def _build_j_dashboard_tables(self):
+        meta = self._normalize_mapping(self.robot_meta)
+        ctx = self._collect_live_analysis_context()
+        enemy = ctx["enemy"]
+        robot = ctx["robot"]
+        fusion = ctx["fusion"]
+        last_directive = ctx["last_directive"]
+        enemy30 = ctx["enemy30"]
+        robot30 = ctx["robot30"]
+        bp_warn = ctx["bp_warn"]
+        bp_base30 = ctx["bp_base30"]
+        bp_live30 = ctx["bp_live30"]
+        pw_warn = ctx["pw_warn"]
+        pw_summary = ctx["pw_summary"]
+        proposal = self._normalize_mapping(meta.get("proposal"))
+
+        active_strategy_key = meta.get("strategy", "N/A")
+        active_strategy = self._strategy_label_ui(active_strategy_key)
+        decision_text = decision_display_name(meta.get("decision", "N/A"))
+        proposal_engine_key = proposal.get("engine_name", "")
+
+        card1_rows = [
+            ("Oyun modu", GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get()), "Seçili oyun akışı"),
+            ("Robot profili", ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get()), "Robotun karar verme eğilimi"),
+            ("Aktif strateji", active_strategy, "Bu tur öne çıkan strateji"),
+            ("Strateji açıklaması", self._strategy_description_ui(active_strategy_key, proposal, meta), "Aktif stratejinin temel amacı"),
+            ("Risk dengesi", self._strategy_risk_balance_ui(active_strategy_key, proposal, meta), "Hangi riski neyle dengelediği"),
+            ("Karar", decision_text, "Hamlenin seçilme biçimi"),
+            ("Öncelik", meta.get("priority", "Yok"), "Karar zincirindeki baskın etken"),
+            ("Skor itkisi", fmt4(meta.get("score_drive", 0.0)), "Skor avantajı baskısı"),
+            ("Güvenlik itkisi", fmt4(meta.get("safety_drive", 0.0)), "Tahtayı emniyette tutma baskısı"),
+        ]
+
+        card2_rows = [
+            ("Son öneri", self.last_proposal_banner or "Henüz yok", "En son görülen öneri"),
+            ("Öneri motoru", proposal_engine_display_name(proposal_engine_key), proposal_engine_info_text(proposal_engine_key)),
+            ("Red şansı", f"%{int(meta.get('gazi_reject_chance', 0.0) * 100)}", "Önerinin rastgele reddedilme ihtimali"),
+            ("Red üst sınırı", f"%{int(meta.get('gazi_reject_cap_ratio', 0.30) * 100)}", "Maksimum red oranı"),
+            ("Gerçekleşen red oranı", f"%{int(meta.get('proposal_reject_ratio', 0.0) * 100)}", "Şu ana kadarki gerçek red oranı"),
+            ("Gazi stili", last_directive.get("style", "Yok"), "Bu tur baskın yönlendirme stili"),
+            ("Hedef kolonlar", self._list_text(last_directive.get("target_cols", [])), "Önerilen hedef kolonlar"),
+            ("Kırılma amacı (30)", (ctx["bp_hist"].get(30, {}) or {}).get("dominant_objective", "veri_yetersiz"), "Kırılma izleyicinin 30 tur amacı"),
+            ("Canlı uyarı sayısı", str(len(bp_warn)), "Kırılma izleyici uyarı adedi"),
+            ("Desen uyarı sayısı", str(len(pw_warn)), "Desen izleyici uyarı adedi"),
+            ("Desen toplam 9 odağı", fmt4(pw_summary.get("human_sum9_focus_rate", 0.0)), "Desen izleyici toplam 9 yoğunluğu"),
+            ("Desen gelecek planı", fmt4(pw_summary.get("human_future_plan_rate", 0.0)), "Desen izleyici plan oranı"),
+            ("Son eğitim hatası", fmt4(self.robot_ai.last_train_error), "Son öğrenme kaybı"),
+            ("Model güncelleme", str(self.robot_ai.total_updates), "Toplam öğrenme güncellemesi"),
+        ]
+        if bp_warn:
+            for idx, item in enumerate(bp_warn[:3], start=1):
+                card2_rows.append((f"Kırılma uyarısı {idx}", item, "Kırılma izleyiciden gelen uyarı"))
+        if pw_warn:
+            for idx, item in enumerate(pw_warn[:3], start=1):
+                card2_rows.append((f"Desen uyarısı {idx}", item, "Desen izleyiciden gelen uyarı"))
 
         p_points = float(enemy30.get("avg_points", 0.0) or 0.0)
         r_points = float(robot30.get("avg_points", 0.0) or 0.0)
@@ -2025,7 +3014,179 @@ class VersusGame:
         r_cf = float(robot30.get("counterfactual_gap", 0.0) or 0.0)
         max_scale = max(1.0, p_points, r_points, p_expl, r_expl, p_cf, r_cf)
 
-        card3_lines = [
+        card3_rows = [
+            ("Oyuncu puan bandı", f"[{ascii_bar(p_points, max_scale)}] {fmt4(p_points)}", "Son 30 tur puan ortalaması"),
+            ("Robot puan bandı", f"[{ascii_bar(r_points, max_scale)}] {fmt4(r_points)}", "Son 30 tur puan ortalaması"),
+            ("Oyuncu patlama bandı", f"[{ascii_bar(p_expl, max_scale)}] {fmt4(p_expl)}", "Son 30 tur patlama ortalaması"),
+            ("Robot patlama bandı", f"[{ascii_bar(r_expl, max_scale)}] {fmt4(r_expl)}", "Son 30 tur patlama ortalaması"),
+            ("Oyuncu karşı-olgusal fark", f"[{ascii_bar(p_cf, max_scale)}] {fmt4(p_cf)}", "Alternatif sütun farkı"),
+            ("Robot karşı-olgusal fark", f"[{ascii_bar(r_cf, max_scale)}] {fmt4(r_cf)}", "Alternatif sütun farkı"),
+        ]
+
+        metrics_rows = [
+            ("Tur sayısı", str(enemy.get("turns", 0)), str(robot.get("turns", 0)), "Toplanan örnek sayısı"),
+            ("Beceri skoru", fmt4(enemy.get("skill_score", 0.0)), fmt4(robot.get("skill_score", 0.0)), self._analysis_value_note("beceri", enemy.get("skill_score", 0.0), robot.get("skill_score", 0.0))),
+            ("Kazandıran hamle oranı", fmt4(enemy.get("win_like_rate", 0.0)), fmt4(robot.get("win_like_rate", 0.0)), self._analysis_value_note("kazandiran", enemy.get("win_like_rate", 0.0), robot.get("win_like_rate", 0.0))),
+            ("Son 30 ortalama puan", fmt4(p_points), fmt4(r_points), self._analysis_value_note("puan", p_points, r_points)),
+            ("Son 30 ortalama patlama", fmt4(p_expl), fmt4(r_expl), self._analysis_value_note("patlama", p_expl, r_expl)),
+            ("Karşı-olgusal fark", fmt4(p_cf), fmt4(r_cf), self._analysis_value_note("counterfactual", p_cf, r_cf)),
+            ("Kırılma uyarı skoru", fmt4(0.0), fmt4(float(len(bp_warn))), "Yüksek değer tarihsel tabandan sapma demektir"),
+            ("Özel taş mantık skoru", fmt4(bp_base30.get("special_logic_score", 0.0)), fmt4(bp_live30.get("special_logic_score", 0.0)), "Özel taşların verime dönüşme oranı"),
+            ("Toplam 9 niyet oranı", fmt4(bp_base30.get("sum9_intent_rate", 0.0)), fmt4(bp_live30.get("sum9_intent_rate", 0.0)), "Toplam 9 fırsatına odaklanma"),
+            ("Gelecek taş plan oranı", fmt4(bp_base30.get("future_plan_rate", 0.0)), fmt4(bp_live30.get("future_plan_rate", 0.0)), "Sonraki taşlara göre kurulum yapma"),
+            ("Desen özel taş verimi", fmt4(pw_summary.get("human_special_efficiency", 0.0)), fmt4(0.0), "Desen izleyici günlük tarama verisi"),
+            ("Desen toplam 9 odağı", fmt4(pw_summary.get("human_sum9_focus_rate", 0.0)), fmt4(0.0), "Desen izleyici günlük tarama verisi"),
+            ("Desen gelecek planı", fmt4(pw_summary.get("human_future_plan_rate", 0.0)), fmt4(0.0), "Desen izleyici günlük tarama verisi"),
+            ("Mantıklı seçim oranı", "-", fmt4(last_directive.get("logical_ratio", 0.0)), "Gazi birleştirme mantık ağırlığı"),
+            ("Özgür seçim oranı", "-", fmt4(last_directive.get("freedom_ratio", 0.0)), "Gazi serbest seçim katsayısı"),
+            ("Rastgele red olayı", "-", str(fusion.get("random_reject_events", 0)), "Ajan çeşitlilik red sayısı"),
+            ("Mantık seçimi olayı", "-", str(fusion.get("logic_choice_events", 0)), "Ajan mantık seçimi toplamı"),
+        ]
+
+        weight_rows = self._format_weight_records(
+            self._normalize_mapping(last_directive.get("strategy_weights")),
+            self._strategy_label_ui,
+            self._strategy_description_ui,
+            limit=10,
+        )
+
+        advanced_text = self._table_blocks_text(
+            self._tableize_records(
+                "6) Gazi Strateji Ağırlıkları",
+                ("STRATEJİ", "SKOR", "AÇIKLAMA"),
+                self._format_weight_records(last_directive.get("strategy_weights", {}) or {}, self._strategy_label_ui, self._strategy_description_ui, limit=10),
+            ),
+            self._tableize_records(
+                "Kırılma İzleyici Strateji Ağırlıkları",
+                ("STRATEJİ", "SKOR", "AÇIKLAMA"),
+                self._format_weight_records((ctx["bp_signal"].get("strategy_weights", {}) if isinstance(ctx["bp_signal"], dict) else {}) or {}, self._strategy_label_ui, self._strategy_description_ui, limit=10),
+            ),
+            self._tableize_records(
+                "Desen İzleyici Strateji Ağırlıkları",
+                ("STRATEJİ", "SKOR", "AÇIKLAMA"),
+                self._format_weight_records((ctx["pw_signal"].get("strategy_weights", {}) if isinstance(ctx["pw_signal"], dict) else {}) or {}, self._strategy_label_ui, self._strategy_description_ui, limit=10),
+            ),
+            self._tableize_records(
+                "Birleşik Strateji Puanları",
+                ("STRATEJİ", "SKOR", "AÇIKLAMA"),
+                self._format_weight_records(ctx["all_strategy_weights"], self._strategy_label_ui, self._strategy_description_ui, limit=12),
+            ),
+            self._tableize_records(
+                "Öneri Motoru Puanları",
+                ("MOTOR", "SKOR", "AÇIKLAMA"),
+                self._format_weight_records(ctx["all_proposal_weights"], proposal_engine_display_name, proposal_engine_info_text, limit=8),
+            ),
+            self._tableize_records(
+                "Aday Sütun Sıralaması",
+                ("SÜTUN", "NİHAİ", "SİNİR AĞI", "KURAL", "POTANSİYEL", "RİSK", "SKOR İTKİSİ", "GÜVENLİK", "STRATEJİ"),
+                self._candidate_snapshot_rows(limit=6),
+            ),
+        )
+
+        return {
+            "card_decision": self._tableize_records("1) Robot Karar Tablosu", ("ALAN", "DEĞER", "AÇIKLAMA"), card1_rows),
+            "card_proposal": self._tableize_records("2) Öneri ve Gazi Tablosu", ("ALAN", "DEĞER", "AÇIKLAMA"), card2_rows),
+            "card_projection": self._tableize_records("3) 30 Hamle Öngörü Tablosu", ("ALAN", "DEĞER", "AÇIKLAMA"), card3_rows),
+            "table_metrics": self._tableize_records("4) İzleme Tablosu", ("ÖLÇÜT", "OYUNCU", "ROBOT", "YORUM"), metrics_rows),
+            "table_strategy": self._tableize_records("5) Strateji Ağırlık Tablosu", ("STRATEJİ", "SKOR", "AÇIKLAMA"), weight_rows),
+            "card_advanced": advanced_text,
+        }
+
+    def _refresh_dashboard_window(self, force=False):
+        if self.dashboard_win is None or not self.dashboard_win.winfo_exists():
+            return
+        widgets = self.dashboard_widgets
+        if not widgets:
+            return
+        now = time.time()
+        if (not force) and (now - self.last_dashboard_refresh_at) < self.dashboard_refresh_interval:
+            return
+        self.last_dashboard_refresh_at = now
+        try:
+            rendered_tables = self._build_j_dashboard_tables()
+            for key, text in rendered_tables.items():
+                if key in widgets:
+                    self._safe_set_widget_text(widgets, key, text, striped=True)
+            return
+        except Exception as ex:
+            self._push_dashboard_fallback(widgets, "J pano hata durumu", ex)
+            return
+        try:
+            meta = self._normalize_mapping(self.robot_meta)
+            ctx = self._collect_live_analysis_context()
+            enemy = ctx["enemy"]
+            robot = ctx["robot"]
+            fusion = ctx["fusion"]
+            last_directive = ctx["last_directive"]
+            enemy30 = ctx["enemy30"]
+            robot30 = ctx["robot30"]
+            bp_warn = ctx["bp_warn"]
+            bp_base30 = ctx["bp_base30"]
+            bp_live30 = ctx["bp_live30"]
+            pw_warn = ctx["pw_warn"]
+            pw_summary = ctx["pw_summary"]
+            proposal = self._normalize_mapping(meta.get("proposal"))
+
+            active_strategy_key = meta.get("strategy", "N/A")
+            active_strategy = self._strategy_label_ui(active_strategy_key)
+            active_info = strategy_info_text(active_strategy_key)
+            decision_text = decision_display_name(meta.get("decision", "N/A"))
+            proposal_engine = proposal_engine_display_name(proposal.get("engine_name", "unknown"))
+
+            card1_lines = [
+            f"Oyun Modu : {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
+            f"Robot Profili : {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
+            f"Aktif Strateji : {active_strategy}",
+            "Risk Dengesi : Tasma/holes/kolon dengesizligi riskini, puan getirisi ile dengeler",
+            f"Karar : {decision_text}",
+            f"Oncelik : {meta.get('priority', 'N/A')}",
+            f"Skor Itkisi : {fmt4(meta.get('score_drive', 0.0))}",
+            f"Guvenlik Itkisi : {fmt4(meta.get('safety_drive', 0.0))}",
+            f"Aciklama : {active_info}",
+            "",
+            "Yorum:",
+            "- Guvenli Yigma = ust satira tasma riskini azaltmak icin yuksek kolonlari dengelemek.",
+            "- Bu strateji, tek hamlelik buyuk puan yerine oyunu uzun sure kontrol etmeyi hedefler.",
+        ]
+
+            card2_lines = [
+            f"Son Oneri : {self.last_proposal_banner}",
+            f"Oneri Motoru : {proposal_engine}",
+            f"Motor Aciklamasi : {proposal_engine_info_text(proposal.get('engine_name', ''))}",
+            f"Red Sansi : %{int(meta.get('gazi_reject_chance', 0.0) * 100)}",
+            f"Red Ust Siniri : %{int(meta.get('gazi_reject_cap_ratio', 0.30) * 100)}",
+            f"Gerceklesen Red Orani : %{int(meta.get('proposal_reject_ratio', 0.0) * 100)}",
+            "",
+            f"Gazi Stil : {last_directive.get('style', 'N/A')}",
+            f"Hedef Kolonlar : {last_directive.get('target_cols', [])}",
+            f"Kirilma Ajan Amaci (30): {ctx['bp_hist'].get(30, {}).get('dominant_objective', 'veri_yetersiz')}",
+            f"Canli Uyari Sayisi : {len(bp_warn)}",
+            f"PatternWatch Uyari Sayisi : {len(pw_warn)}",
+            f"PatternWatch Sum9 Odak : {fmt4(pw_summary.get('human_sum9_focus_rate', 0.0))}",
+            f"PatternWatch Gelecek Plan : {fmt4(pw_summary.get('human_future_plan_rate', 0.0))}",
+            f"NN Son Egitim Hatasi : {fmt4(self.robot_ai.last_train_error)}",
+            f"Model Guncelleme : {self.robot_ai.total_updates}",
+        ]
+            if bp_warn:
+                card2_lines.append("")
+                card2_lines.append("Kirilma Ajan Uyarilari:")
+                for item in bp_warn[:3]:
+                    card2_lines.append(f"- {item}")
+            if pw_warn:
+                card2_lines.append("")
+                card2_lines.append("PatternWatch Uyarilari:")
+                for item in pw_warn[:3]:
+                    card2_lines.append(f"- {item}")
+
+            p_points = float(enemy30.get("avg_points", 0.0) or 0.0)
+            r_points = float(robot30.get("avg_points", 0.0) or 0.0)
+            p_expl = float(enemy30.get("avg_explosions", 0.0) or 0.0)
+            r_expl = float(robot30.get("avg_explosions", 0.0) or 0.0)
+            p_cf = float(enemy30.get("counterfactual_gap", 0.0) or 0.0)
+            r_cf = float(robot30.get("counterfactual_gap", 0.0) or 0.0)
+            max_scale = max(1.0, p_points, r_points, p_expl, r_expl, p_cf, r_cf)
+
+            card3_lines = [
             "30 Hamle Projeksiyon Gorsellestirme",
             f"Oyuncu Puan : [{ascii_bar(p_points, max_scale)}] {fmt4(p_points)}",
             f"Robot Puan  : [{ascii_bar(r_points, max_scale)}] {fmt4(r_points)}",
@@ -2039,7 +3200,7 @@ class VersusGame:
             "- Cok yuksek fark, farkli sutunlarda daha iyi sonuc olabilecegini gosterir.",
         ]
 
-        rows = [
+            rows = [
             {
                 "metric": "Tur Sayisi",
                 "player": str(enemy.get("turns", 0)),
@@ -2124,126 +3285,116 @@ class VersusGame:
                 "robot": fmt4(0.0),
                 "comment": "Oyundan bagimsiz taramada setup->getiri iliskisi",
             },
-        ]
+            {
+                "metric": "Mantikli Secim Orani",
+                "player": "-",
+                "robot": fmt4(last_directive.get("logical_ratio", 0.0)),
+                "comment": "Gazi birlestirme mantik agirligi",
+            },
+            {
+                "metric": "Ozgur Secim Orani",
+                "player": "-",
+                "robot": fmt4(last_directive.get("freedom_ratio", 0.0)),
+                "comment": "Gazi serbest secim katsayisi",
+            },
+            {
+                "metric": "Rastgele Red Olay",
+                "player": "-",
+                "robot": str(fusion.get("random_reject_events", 0)),
+                "comment": "Ajan cesitlilik red tetik sayisi",
+            },
+            {
+                "metric": "Mantik Secim Olay",
+                "player": "-",
+                "robot": str(fusion.get("logic_choice_events", 0)),
+                "comment": "Ajan mantik secim toplam sayisi",
+            },
+            ]
 
-        weights = last_directive.get("strategy_weights", {}) or {}
-        weight_rows = sorted(
-            [(k, float(v or 0.0)) for k, v in weights.items()],
-            key=lambda t: t[1],
-            reverse=True,
-        )
-        weight_lines = ["STRATEJI\tAGIRLIK\tANLAM"]
-        for name, val in [x for x in weight_rows if x[1] > 0][:10]:
-            weight_lines.append(f"{strategy_display_name(name)}\t{fmt4(val)}\t{strategy_info_text(name)}")
-        if len(weight_lines) == 1:
-            weight_lines.append("Veri yok\t0.0000\tHenuz agirlik uretilmedi")
+            weights = self._normalize_mapping(last_directive.get("strategy_weights"))
+            weight_rows = sorted(
+                [(k, float(v or 0.0)) for k, v in weights.items() if float(v or 0.0) > 0],
+                key=lambda t: t[1],
+                reverse=True,
+            )
+            strategy_rows = [(self._strategy_label_ui(name), fmt4(val), strategy_info_text(name)) for name, val in weight_rows[:10]]
 
-        table_text = self._build_analysis_table_text(rows)
-        strategy_table_text = "\n".join(weight_lines)
+            advanced_lines = []
+            advanced_lines.extend(self._format_weight_lines("GAZI Strateji Agirliklari", last_directive.get("strategy_weights", {}) or {}, self._strategy_label_ui, limit=10))
+            advanced_lines.append("")
+            advanced_lines.extend(self._format_weight_lines("Breakpoint Strateji Onerileri", (ctx["bp_signal"].get("strategy_weights", {}) if isinstance(ctx["bp_signal"], dict) else {}) or {}, self._strategy_label_ui, limit=10))
+            advanced_lines.append("")
+            advanced_lines.extend(self._format_weight_lines("PatternWatch Strateji Onerileri", (ctx["pw_signal"].get("strategy_weights", {}) if isinstance(ctx["pw_signal"], dict) else {}) or {}, self._strategy_label_ui, limit=10))
+            advanced_lines.append("")
+            advanced_lines.extend(self._format_weight_lines("Birlesik Strateji Skorlari", ctx["all_strategy_weights"], self._strategy_label_ui, limit=12))
+            advanced_lines.append("")
+            advanced_lines.extend(self._format_weight_lines("Birlesik Oneri Motoru Skorlari", ctx["all_proposal_weights"], proposal_engine_display_name, limit=8))
+            advanced_lines.append("")
+            advanced_lines.append("Aday Kolon Siralamasi")
+            advanced_lines.extend(self._candidate_snapshot_lines(limit=6))
 
-        widgets["card_decision"].configure(state="normal")
-        widgets["card_decision"].delete("1.0", "end")
-        widgets["card_decision"].insert("1.0", "\n".join(card1_lines))
-        widgets["card_decision"].configure(state="disabled")
+            table_text = self._build_analysis_table_text(rows)
 
-        widgets["card_proposal"].configure(state="normal")
-        widgets["card_proposal"].delete("1.0", "end")
-        widgets["card_proposal"].insert("1.0", "\n".join(card2_lines))
-        widgets["card_proposal"].configure(state="disabled")
-
-        widgets["card_projection"].configure(state="normal")
-        widgets["card_projection"].delete("1.0", "end")
-        widgets["card_projection"].insert("1.0", "\n".join(card3_lines))
-        widgets["card_projection"].configure(state="disabled")
-
-        widgets["table_metrics"].configure(state="normal")
-        widgets["table_metrics"].delete("1.0", "end")
-        widgets["table_metrics"].insert("1.0", table_text)
-        widgets["table_metrics"].configure(state="disabled")
-
-        widgets["table_strategy"].configure(state="normal")
-        widgets["table_strategy"].delete("1.0", "end")
-        widgets["table_strategy"].insert("1.0", strategy_table_text)
-        widgets["table_strategy"].configure(state="disabled")
+            self._safe_set_widget_text(widgets, "card_decision", "\n".join(self._tableize_lines("1) Robot Karar Karti", card1_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "card_proposal", "\n".join(self._tableize_lines("2) Oneri ve Gazi Karti", card2_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "card_projection", "\n".join(self._tableize_lines("3) 30 Hamle Projeksiyon", card3_lines)), striped=True)
+            self._safe_set_widget_text(widgets, "table_metrics", table_text, striped=True)
+            self._safe_set_widget_text(widgets, "table_strategy", self._tableize_records("5) Strateji Agirlik Tablosu", ("STRATEJI", "AGIRLIK", "ANLAM"), strategy_rows), striped=True)
+            self._safe_set_widget_text(widgets, "card_advanced", "\n".join(advanced_lines), striped=True)
+        except Exception as ex:
+            self._push_dashboard_fallback(widgets, "J Dashboard Hata Durumu", ex)
 
     def show_dashboard_window(self, _event=None):
         if self.dashboard_win is not None and self.dashboard_win.winfo_exists():
             self.dashboard_win.lift()
-            self._refresh_dashboard_window()
+            self._refresh_dashboard_window(force=True)
             return
 
         self.dashboard_win = tk.Toplevel(self.root)
-        self.dashboard_win.title("GAZI Analiz Dashboard (J)")
+        self.dashboard_win.title("Canlı Analiz Panosu (J)")
         self.dashboard_win.geometry("1200x780")
         self.dashboard_win.minsize(980, 640)
+        self.dashboard_win.resizable(True, True)
         self.dashboard_widgets = {}
 
         style = ttk.Style(self.dashboard_win)
         style.configure("Card.TLabelframe", background="#0f172a", foreground="#e2e8f0")
         style.configure("Card.TLabelframe.Label", background="#0f172a", foreground="#e2e8f0", font=("Segoe UI", 11, "bold"))
 
-        root = tk.Frame(self.dashboard_win, bg="#0b1220")
-        root.pack(fill="both", expand=True, padx=10, pady=10)
-
-        hdr = tk.Label(
-            root,
-            text="GAZI ANALIZ DASHBOARD - J",
-            bg="#1d4ed8",
-            fg="#f8fafc",
-            font=("Segoe UI", 14, "bold"),
-            pady=6,
+        _root, grid = self._build_scrollable_dashboard_shell(
+            self.dashboard_win,
+            "J CANLI ANALİZ PANOSU - GAZİ",
+            "#1d4ed8",
         )
-        hdr.pack(fill="x", pady=(0, 8))
-
-        grid = tk.Frame(root, bg="#0b1220")
         grid.pack(fill="both", expand=True)
 
         for c in range(2):
             grid.grid_columnconfigure(c, weight=1, uniform="cards")
-        for r in range(3):
-            grid.grid_rowconfigure(r, weight=1, uniform="cards")
+        for r, min_h in ((0, 240), (1, 260), (2, 320)):
+            grid.grid_rowconfigure(r, weight=1, uniform="cards", minsize=min_h)
 
-        card_decision = ttk.LabelFrame(grid, text="1) Robot Karar Karti", style="Card.TLabelframe")
-        card_decision.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
-        txt_decision = tk.Text(card_decision, wrap="word", bg="#111827", fg="#dbeafe", font=("Segoe UI", 10), relief="flat", padx=8, pady=8)
-        txt_decision.pack(fill="both", expand=True)
+        def add_j_card(row, col, title, tabs=(220, 420, 1160), font=("Consolas", 9)):
+            card = ttk.LabelFrame(grid, text=title, style="Card.TLabelframe")
+            card.grid(row=row, column=col, sticky="nsew", padx=6, pady=6)
+            body = tk.Frame(card, bg="#111827")
+            body.pack(fill="both", expand=True)
+            txt = tk.Text(body, wrap="none", bg="#111827", fg="#dbeafe", font=font, relief="flat", padx=8, pady=8)
+            txt.configure(tabs=tabs)
+            vbar = tk.Scrollbar(body, orient="vertical", command=txt.yview)
+            hbar = tk.Scrollbar(body, orient="horizontal", command=txt.xview)
+            txt.configure(yscrollcommand=vbar.set, xscrollcommand=hbar.set)
+            txt.pack(side="left", fill="both", expand=True)
+            vbar.pack(side="right", fill="y")
+            hbar.pack(side="bottom", fill="x")
+            self._bind_text_mousewheel(txt, body, card, vbar, hbar)
+            return txt
 
-        card_proposal = ttk.LabelFrame(grid, text="2) Oneri ve Gazi Karti", style="Card.TLabelframe")
-        card_proposal.grid(row=0, column=1, sticky="nsew", padx=6, pady=6)
-        txt_proposal = tk.Text(card_proposal, wrap="word", bg="#111827", fg="#dbeafe", font=("Segoe UI", 10), relief="flat", padx=8, pady=8)
-        txt_proposal.pack(fill="both", expand=True)
-
-        card_projection = ttk.LabelFrame(grid, text="3) 30 Hamle Projeksiyon", style="Card.TLabelframe")
-        card_projection.grid(row=1, column=0, sticky="nsew", padx=6, pady=6)
-        txt_projection = tk.Text(card_projection, wrap="none", bg="#111827", fg="#dbeafe", font=("Consolas", 10), relief="flat", padx=8, pady=8)
-        txt_projection.pack(fill="both", expand=True)
-
-        card_metrics = ttk.LabelFrame(grid, text="4) Izleme Tablosu", style="Card.TLabelframe")
-        card_metrics.grid(row=1, column=1, sticky="nsew", padx=6, pady=6)
-        txt_metrics = tk.Text(card_metrics, wrap="none", bg="#111827", fg="#dbeafe", font=("Consolas", 10), relief="flat", padx=8, pady=8, tabs=(240, 360, 500))
-        txt_metrics.pack(fill="both", expand=True)
-
-        card_strategy = ttk.LabelFrame(grid, text="5) Strateji Agirlik Tablosu", style="Card.TLabelframe")
-        card_strategy.grid(row=2, column=0, sticky="nsew", padx=6, pady=6)
-        txt_strategy = tk.Text(card_strategy, wrap="none", bg="#111827", fg="#dbeafe", font=("Consolas", 10), relief="flat", padx=8, pady=8, tabs=(250, 340))
-        txt_strategy.pack(fill="both", expand=True)
-
-        card_legend = ttk.LabelFrame(grid, text="6) Sozluk ve Anlam", style="Card.TLabelframe")
-        card_legend.grid(row=2, column=1, sticky="nsew", padx=6, pady=6)
-        txt_legend = tk.Text(card_legend, wrap="word", bg="#111827", fg="#dbeafe", font=("Segoe UI", 10), relief="flat", padx=8, pady=8)
-        txt_legend.pack(fill="both", expand=True)
-        txt_legend.insert(
-            "1.0",
-            "safe_stack / Guvenli Yigma:\n"
-            "Tahtadaki kolon yukseklik farkini azaltir ve ust satira tasma riskini dusurur.\n"
-            "\n"
-            "J (Joker): Nokta etkili, hedef hucre ve yakin cevresini temizleyerek hassas acma yapar.\n"
-            "B (Bomba): Alan etkili, daha genis temizlik yapar ama kontrolu daha zordur.\n"
-            "\n"
-            "Karsi-olgusal fark:\n"
-            "Ayni hamlede baska sutun secilseydi beklenen kazanc farkini temsil eder. Dusuk olmasi iyidir.\n",
-        )
-        txt_legend.configure(state="disabled")
+        txt_decision = add_j_card(0, 0, "1) Robot Karar Tablosu")
+        txt_proposal = add_j_card(0, 1, "2) Öneri ve Gazi Tablosu")
+        txt_projection = add_j_card(1, 0, "3) 30 Hamle Öngörü Tablosu")
+        txt_metrics = add_j_card(1, 1, "4) İzleme Tablosu", tabs=(280, 420, 680))
+        txt_strategy = add_j_card(2, 0, "5) Strateji Ağırlık Tablosu", tabs=(300, 440, 1220))
+        txt_advanced = add_j_card(2, 1, "6) Tüm Ajan Önerileri ve Eksik Ölçütler", tabs=(280, 430, 1220), font=("Consolas", 8))
 
         self.dashboard_widgets = {
             "card_decision": txt_decision,
@@ -2251,18 +3402,21 @@ class VersusGame:
             "card_projection": txt_projection,
             "table_metrics": txt_metrics,
             "table_strategy": txt_strategy,
+            "card_advanced": txt_advanced,
         }
 
-        self._refresh_dashboard_window()
+        self._refresh_dashboard_window(force=True)
 
     def _ensure_player_name(self):
         current_name = str(self.profile.get("player_name", "")).strip()
         if current_name and current_name != "Oyuncu":
+            self.profile["player_name"] = current_name.upper()
+            save_profile(self.profile)
             return
 
         asked = simpledialog.askstring("Oyuncu", "Oyuncu adini giriniz:", parent=self.root)
         asked = (asked or "").strip()
-        self.profile["player_name"] = asked if asked else "Oyuncu"
+        self.profile["player_name"] = (asked if asked else "Oyuncu").upper()
         save_profile(self.profile)
 
     def _record_match_result(self):
@@ -2322,6 +3476,7 @@ class VersusGame:
         self.robot_ai.save_memory()
         save_audio_settings(self.audio_settings)
         self.music.stop()
+        self._save_ui_preferences()
         save_profile(self.profile)
         self.root.destroy()
 
@@ -2390,6 +3545,7 @@ class VersusGame:
 
     def on_game_mode_changed(self):
         mode = self.game_mode_var.get()
+        self._save_ui_preferences()
         self.push_reason(f"Oyun modu degisti: {GAME_MODE_LABELS.get(mode, mode)}", "system")
         if mode == GAME_MODE_GAZI:
             self.push_reason("Gazi modu aktif: tum stratejiler ve oneriler ilk andan itibaren acik", "system")
@@ -2397,6 +3553,7 @@ class VersusGame:
 
     def on_robot_profile_changed(self):
         profile = self.robot_profile_var.get()
+        self._save_ui_preferences()
         self.push_reason(f"Robot profili: {ROBOT_PROFILE_LABELS.get(profile, profile)}", "system")
 
     def _initialize_turn_flow(self):
@@ -2811,6 +3968,19 @@ class VersusGame:
                     guided_reward += max(0.0, 0.55 - risk_val) * 1.9
                 else:
                     guided_reward += (max(0.0, 0.45 - risk_val) * 1.1) + (score_gap * 0.25)
+            self.last_reward_signal = {
+                "mode": mode,
+                "profile": profile,
+                "player_points": round(player_points, 3),
+                "robot_points": round(robot_points, 3),
+                "penalty": round(penalty, 3),
+                "risk_penalty": round(risk_penalty, 3),
+                "score_gap": round(score_gap, 3),
+                "rule_bonus": round(rule_bonus, 3),
+                "potential": round(potential, 3),
+                "risk": round(risk_val, 3),
+                "guided_reward": round(guided_reward, 3),
+            }
             self.robot_ai.learn_from_move(
                 self.robot_meta["x"],
                 guided_reward,
@@ -3224,7 +4394,7 @@ class VersusGame:
             title_x,
             TOP_Y - 8,
             anchor="sw",
-            text="SAYISAL TETRIS",
+            text="NUMTRIS",
             fill="#f8fafc",
             font=("Garamond", 30, "bold"),
         )
@@ -3260,87 +4430,89 @@ class VersusGame:
         # sag siniri robot tahtasi sag cizgisiyle ayni hizada olsun.
         feed_x1 = LEFT_X
         feed_y1 = TOP_Y + BOARD_H + 30
-        feed_x2 = right_x + BOARD_W
-        feed_y2 = win_h - 20
+        feed_x2 = right_x + BOARD_W if bool(self.show_profile_panel_var.get()) else (win_w - 24)
+        feed_y2 = win_h - 8
         if feed_y2 - feed_y1 < 90:
             feed_y1 = feed_y2 - 90
 
-        nx = right_x + BOARD_W + 18
-        ny = TOP_Y
-        info_x1 = nx - 8
-        info_x2 = win_w - 24
-        info_y1 = ny
-        info_y2 = max(info_y1 + 120, feed_y1 - 12)
-        if info_x2 - info_x1 < 260:
-            info_x1 = info_x2 - 260
-        self.canvas.create_rectangle(info_x1, info_y1, info_x2, info_y2, outline="#475569", width=2, fill="#111827")
+        info_bottom = TOP_Y
+        if bool(self.show_profile_panel_var.get()):
+            nx = right_x + BOARD_W + 18
+            ny = TOP_Y
+            info_x1 = nx - 8
+            info_x2 = win_w - 24
+            info_y1 = ny
+            info_y2 = max(info_y1 + 120, feed_y1 - 12)
+            if info_x2 - info_x1 < 260:
+                info_x1 = info_x2 - 260
+            self.canvas.create_rectangle(info_x1, info_y1, info_x2, info_y2, outline="#475569", width=2, fill="#111827")
 
-        lines = [
-            "Profil ve Robot Durumu",
-            "",
-            "KONTROLLER",
-            "A/D: Kaydir  |  S: Hizli  |  Space: Normal",
-            "B: Bekleme Modu  |  H/J: Analiz  |  R: Yeni Mac",
-            "Q/Esc: Cikis",
-            "",
-            "OYUNCU",
-            f"Ad: {self.player_name}",
-            f"Toplam mac: {int(self.profile.get('total_matches', 0))}",
-            f"{self.player_name} W/L: {int(self.profile.get('player_wins', 0))}/{int(self.profile.get('player_losses', 0))}",
-            "",
-            "ROBOT",
-            f"Robot W/L: {int(self.profile.get('robot_wins', 0))}/{int(self.profile.get('robot_losses', 0))}",
-            f"Berabere: {int(self.profile.get('draws', 0))}",
-            f"En yuksek skor ({self.player_name}): {int(self.profile.get('best_player_score', 0))}",
-            f"En yuksek skor (Robot): {int(self.profile.get('best_robot_score', 0))}",
-            f"En yuksek seviye: {int(self.profile.get('best_level', 1))}",
-            "",
-            "OYUN MODU VE STRATEJI",
-            f"Oyun modu: {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
-            f"Robot profili: {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
-            f"Aktif strateji: {strategy_display_name(self.robot_meta.get('strategy', 'N/A')) if self.robot_meta else 'N/A'}",
-            f"Hedef: {self.robot_meta.get('objective', 'Veri toplama') if self.robot_meta else 'Veri toplama'}",
-            f"Profil davranisi: {self.robot_meta.get('profile_style', 'Dengeli risk ve puan') if self.robot_meta else 'Dengeli risk ve puan'}",
-            f"Skor itkisi: {self.robot_meta.get('score_drive', 0) if self.robot_meta else 0} | Guvenlik itkisi: {self.robot_meta.get('safety_drive', 0) if self.robot_meta else 0}",
-            "",
-            f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
-            f"Strateji Slotlari: ACIK {self.robot_ai.strategy_engine.active_count()} / KAPALI {max(0, 30 - self.robot_ai.strategy_engine.active_count())}",
-            f"Oneri motoru sayisi: {self.robot_ai.strategy_engine.proposal_engine_count()}",
-            f"Oneri Kapisi: {'ACIK' if self.robot_meta and self.robot_meta.get('proposal') else 'KAPALI'}",
-            f"Model guncelleme: {self.robot_ai.total_updates}",
-            f"Son egitim hatasi: {self.robot_ai.last_train_error:.4f}",
-            f"Bekleme modu: {'ACIK' if self.wait_mode_var.get() else 'KAPALI'}",
-            f"Akis filtresi: {feed_filter_display_name(self.feed_filter_var.get())}",
-            f"Gazi komutu: {self.robot_meta.get('gazi_command', 'N/A') if self.robot_meta else 'N/A'}",
-            "",
-            f"Son onerisi: {self.last_proposal_banner}",
-        ]
+            lines = [
+                "Profil ve Robot Durumu",
+                "",
+                "KONTROLLER",
+                "A/D: Kaydir  |  S: Hizli  |  Space: Normal",
+                "B: Bekleme Modu  |  H/J: Analiz  |  R: Yeni Mac",
+                "Q/Esc: Cikis",
+                "",
+                "OYUNCU",
+                f"Ad: {self.player_name}",
+                f"Toplam mac: {int(self.profile.get('total_matches', 0))}",
+                f"{self.player_name} W/L: {int(self.profile.get('player_wins', 0))}/{int(self.profile.get('player_losses', 0))}",
+                "",
+                "ROBOT",
+                f"Robot W/L: {int(self.profile.get('robot_wins', 0))}/{int(self.profile.get('robot_losses', 0))}",
+                f"Berabere: {int(self.profile.get('draws', 0))}",
+                f"En yuksek skor ({self.player_name}): {int(self.profile.get('best_player_score', 0))}",
+                f"En yuksek skor (Robot): {int(self.profile.get('best_robot_score', 0))}",
+                f"En yuksek seviye: {int(self.profile.get('best_level', 1))}",
+                "",
+                "OYUN MODU VE STRATEJI",
+                f"Oyun modu: {GAME_MODE_LABELS.get(self.game_mode_var.get(), self.game_mode_var.get())}",
+                f"Robot profili: {ROBOT_PROFILE_LABELS.get(self.robot_profile_var.get(), self.robot_profile_var.get())}",
+                f"Aktif strateji: {strategy_display_name(self.robot_meta.get('strategy', 'N/A')) if self.robot_meta else 'N/A'}",
+                f"Hedef: {self.robot_meta.get('objective', 'Veri toplama') if self.robot_meta else 'Veri toplama'}",
+                f"Profil davranisi: {self.robot_meta.get('profile_style', 'Dengeli risk ve puan') if self.robot_meta else 'Dengeli risk ve puan'}",
+                f"Skor itkisi: {self.robot_meta.get('score_drive', 0) if self.robot_meta else 0} | Guvenlik itkisi: {self.robot_meta.get('safety_drive', 0) if self.robot_meta else 0}",
+                "",
+                f"Robot strateji havuzu: {self.robot_ai.strategy_engine.active_count()}",
+                f"Strateji Slotlari: ACIK {self.robot_ai.strategy_engine.active_count()} / KAPALI {max(0, 30 - self.robot_ai.strategy_engine.active_count())}",
+                f"Oneri motoru sayisi: {self.robot_ai.strategy_engine.proposal_engine_count()}",
+                f"Oneri Kapisi: {'ACIK' if self.robot_meta and self.robot_meta.get('proposal') else 'KAPALI'}",
+                f"Model guncelleme: {self.robot_ai.total_updates}",
+                f"Son egitim hatasi: {fmt4(self.robot_ai.last_train_error)}",
+                f"Bekleme modu: {'ACIK' if self.wait_mode_var.get() else 'KAPALI'}",
+                f"Akis filtresi: {feed_filter_display_name(self.feed_filter_var.get())}",
+                f"Gazi komutu: {self.robot_meta.get('gazi_command', 'N/A') if self.robot_meta else 'N/A'}",
+                "",
+                f"Son onerisi: {self.last_proposal_banner}",
+            ]
 
-        y = ny + 14
-        max_bottom = info_y2 - 10
+            y = ny + 14
+            max_bottom = info_y2 - 10
 
-        heading_set = {"Profil ve Robot Durumu", "KONTROLLER", "OYUNCU", "ROBOT", "OYUN MODU VE STRATEJI"}
-        for line in lines:
-            if y > max_bottom:
-                break
-            is_heading = line in heading_set
-            text_id = self.canvas.create_text(
-                nx,
-                y,
-                anchor="nw",
-                text=line,
-                fill="#e2e8f0" if is_heading else "#cbd5e1",
-                font=("Segoe UI", 12 if is_heading else 11, "bold" if is_heading else "normal"),
-                width=max(120, info_x2 - nx - 10),
-            )
-            bbox = self.canvas.bbox(text_id)
-            line_h = (bbox[3] - bbox[1]) if bbox else (22 if is_heading else 18)
-            y += line_h + (6 if is_heading else 4)
+            heading_set = {"Profil ve Robot Durumu", "KONTROLLER", "OYUNCU", "ROBOT", "OYUN MODU VE STRATEJI"}
+            for line in lines:
+                if y > max_bottom:
+                    break
+                is_heading = line in heading_set
+                text_id = self.canvas.create_text(
+                    nx,
+                    y,
+                    anchor="nw",
+                    text=line,
+                    fill="#e2e8f0" if is_heading else "#cbd5e1",
+                    font=("Segoe UI", 12 if is_heading else 11, "bold" if is_heading else "normal"),
+                    width=max(120, info_x2 - nx - 10),
+                )
+                bbox = self.canvas.bbox(text_id)
+                line_h = (bbox[3] - bbox[1]) if bbox else (22 if is_heading else 18)
+                y += line_h + (6 if is_heading else 4)
 
-        if y <= max_bottom and len(lines) > 0 and y + 22 > max_bottom:
-            self.canvas.create_text(nx, max_bottom - 16, anchor="nw", text="...", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
+            if y <= max_bottom and len(lines) > 0 and y + 22 > max_bottom:
+                self.canvas.create_text(nx, max_bottom - 16, anchor="nw", text="...", fill="#cbd5e1", font=("Segoe UI", 11, "bold"))
 
-        info_bottom = y
+            info_bottom = y
 
         if self.game_over:
             bx1 = LEFT_X + 80
@@ -3508,6 +4680,7 @@ class VersusGame:
         self.perform_turn(human_fast=False, auto_reason=None)
 
     def tick(self):
+        now = time.time()
         # Oyun akisindan bagimsiz pattern tarama: tum loglar surekli izlenir.
         pw = self.pattern_watch_agent.follow_independent(force=False)
         if isinstance(pw, dict):
@@ -3518,15 +4691,13 @@ class VersusGame:
                 self._normal_mode_step()
             else:
                 self._idle_analyze_if_needed()
-        elif self.game_mode_var.get() == GAME_MODE_GAZI:
-            self.gazi_agents.follow_log_updates()
         if self._music_enabled():
             self.music.update()
         if self.game_over and not self.match_recorded:
             self._record_match_result()
-        if self.game_mode_var.get() == GAME_MODE_GAZI and (time.time() - self.last_agent_follow) > 2.0:
-            self.gazi_agents.follow_log_updates()
-            self.last_agent_follow = time.time()
+        if self.game_mode_var.get() == GAME_MODE_GAZI and (now - self.last_agent_follow) > self.agent_follow_interval:
+            self.gazi_agents.follow_log_updates(throttle_seconds=self.agent_follow_interval)
+            self.last_agent_follow = now
         if self.analysis_win is not None and self.analysis_win.winfo_exists():
             self._refresh_analysis_window()
         if self.dashboard_win is not None and self.dashboard_win.winfo_exists():
